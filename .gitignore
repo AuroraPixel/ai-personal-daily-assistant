@@ -1,0 +1,236 @@
+# Python 项目 .gitignore 文件
+# Python project .gitignore file
+
+# 字节码文件和编译后的 Python 文件 (Byte-compiled / optimized / DLL files)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 分发打包文件 (Distribution / packaging)
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller 文件 (PyInstaller)
+#  通常这些文件由 PyInstaller 生成，用于创建可执行文件
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# 安装器日志 (Installer logs)
+pip-log.txt
+pip-delete-this-directory.txt
+
+# 单元测试 / 覆盖率报告 (Unit test / coverage reports)
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# 翻译文件 (Translations)
+*.mo
+*.pot
+
+# Django 相关文件 (Django stuff)
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask 相关文件 (Flask stuff)
+instance/
+.webassets-cache
+
+# Scrapy 相关文件 (Scrapy stuff)
+.scrapy
+
+# Sphinx 文档 (Sphinx documentation)
+docs/_build/
+
+# PyBuilder 文件 (PyBuilder)
+target/
+
+# Jupyter Notebook 文件 (Jupyter Notebook)
+.ipynb_checkpoints
+
+# IPython 文件 (IPython)
+profile_default/
+ipython_config.py
+
+# pyenv 版本文件 (pyenv)
+.python-version
+
+# pipenv 相关文件 (pipenv)
+#   根据 pypa/pipenv#598，建议包含 Pipfile.lock 在版本控制中
+#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
+#   但是，如果你的项目协作开发，你可能想要排除它：
+#   However, in case of collaboration, if having platform-specific dependencies or dependencies
+#   having no cross-platform support, pipenv may install dependencies that don't work, or not
+#   install all needed dependencies.
+#Pipfile.lock
+
+# PEP 582 相关文件 (PEP 582)
+__pypackages__/
+
+# Celery 相关文件 (Celery stuff)
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath 解析文件 (SageMath parsed files)
+*.sage.py
+
+# 环境变量文件 (Environments)
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder 项目设置 (Spyder project settings)
+.spyderproject
+.spyproject
+
+# Rope 项目设置 (Rope project settings)
+.ropeproject
+
+# mkdocs 文档 (mkdocs documentation)
+/site
+
+# mypy 类型检查缓存 (mypy)
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre 类型检查器 (Pyre type checker)
+.pyre/
+
+# 操作系统生成的文件 (Operating System Files)
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# IDE 和编辑器文件 (IDE and Editor files)
+# PyCharm
+.idea/
+*.swp
+*.swo
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# 日志文件 (Log files)
+*.log
+
+# 临时文件 (Temporary files)
+*.tmp
+*.temp
+
+# 本地配置文件 (Local configuration files)
+config.local.py
+settings.local.py
+
+# 数据库文件 (Database files)
+*.db
+*.sqlite
+*.sqlite3
+
+# 密钥和凭证文件 (Keys and credentials)
+*.pem
+*.key
+*.crt
+*.csr
+secrets.py
+credentials.json
+token.json
+
+# 备份文件 (Backup files)
+*.bak
+*.backup
+*.old
+
+# 压缩文件 (Archive files)
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Node.js 相关文件（如果项目包含前端部分）(Node.js related files if project includes frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
