@@ -1,23 +1,10 @@
 """
 新闻API客户端
 """
-
+import os
 from typing import Optional, List
 from datetime import datetime, timedelta
-import sys
-import os
-
-# 添加项目根目录到Python路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-
-# 尝试加载.env文件
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass  # 如果没有安装python-dotenv，忽略
-
-from http_core import APIClient
+from core.http_core.client import APIClient
 from .models import (
     NewsResponse, NewsArticle, NewsSearchRequest,
     news_response_from_dict, format_news_article,

@@ -3,13 +3,7 @@ JSONPlaceholder API客户端
 """
 
 from typing import Optional, List
-import sys
-import os
-
-# 添加项目根目录到Python路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-
-from http_core import APIClient
+from core.http_core.client import APIClient
 from .models import (
     User, Post, Comment, Album, Photo, Todo,
     user_from_dict, post_from_dict, comment_from_dict,
