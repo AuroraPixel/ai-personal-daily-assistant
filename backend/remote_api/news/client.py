@@ -80,6 +80,47 @@ class NewsClient:
         else:
             print("Note: News API request failed. Please check if API key is correct.")
             return None
+
+    def get_top_news(self, locale: str = "us", 
+                     category: Optional[str] = None,
+                     limit: int = 10) -> Optional[NewsApiResponse]:
+        """
+        Get top news headlines
+        
+        Args:
+            locale: Locale code (must be in supported locales list)
+            category: News category (optional, must be in supported categories list)
+            limit: Number of news items to return (default 10)
+            
+        Returns:
+            NewsApiResponse or None if request failed
+        """
+        # Validate locale
+        if not validate_locale(locale):
+            raise ValueError(get_locale_error_message())
+        
+        # Validate category if provided
+        if category and not validate_category(category):
+            raise ValueError(get_category_error_message())
+        
+        params = {
+            "locale": locale,
+            "limit": limit
+        }
+        
+        if category:
+            params["categories"] = category
+        
+        # Add authentication parameters
+        params = self._add_auth_params(params)
+        
+        data = self.client.get("/news/top", params=params)
+        
+        if data:
+            return NewsApiResponse.from_dict(data)
+        else:
+            print("Note: Top news API request failed. Please check if API key is correct.")
+            return None
     
     def search_news(self, query: str, 
                    language: str = "en",

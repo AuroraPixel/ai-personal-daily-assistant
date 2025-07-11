@@ -9,8 +9,8 @@ import json
 from fastmcp import FastMCP
 from remote_api.news import NewsClient
 from remote_api.news.models import (
-    NEWS_CATEGORIES, NEWS_LANGUAGES,
-    get_category_error_message, get_language_error_message
+    NEWS_CATEGORIES, NEWS_LANGUAGES, NEWS_LOCALES,
+    get_category_error_message, get_language_error_message, get_locale_error_message
 )
 
 # Initialize news client
@@ -85,6 +85,63 @@ def register_news_tools(mcp: FastMCP):
             
         except Exception as e:
             return json.dumps({"error": f"Error getting news: {str(e)}"}, ensure_ascii=False)
+
+    # Get top news headlines
+    @mcp.tool
+    def get_top_news(locale: str = "us", category: str = "", limit: int = 10) -> str:
+        """
+        Get top news headlines
+        
+        Args:
+            locale: Locale code (default "us")
+                   Supported locales: us (United States), gb (United Kingdom), ca (Canada), 
+                   au (Australia), in (India), jp (Japan), kr (South Korea), cn (China), 
+                   de (Germany), fr (France), es (Spain), it (Italy), ru (Russia), 
+                   br (Brazil), mx (Mexico)
+            category: News category (optional, leave empty for all news)
+                     Supported categories: general, science, sports, business, health, entertainment, 
+                     tech, politics, food, travel
+            limit: Number of news items to return (default 10)
+            
+        Returns:
+            JSON string of NewsApiResponse entity in format:
+            {
+                "meta": {
+                    "found": 2847,
+                    "returned": 10,
+                    "limit": 10,
+                    "page": 1
+                },
+                "data": [
+                    {
+                        "uuid": "3e3e3e3e-3e3e-3e3e-3e3e-3e3e3e3e3e3e",
+                        "title": "Top News Title",
+                        "description": "Top news description...",
+                        "url": "https://example.com/news/top",
+                        "source": "Example News",
+                        "published_at": "2025-01-18T10:30:00Z",
+                        "language": "en",
+                        "locale": "us",
+                        "keywords": "keyword1, keyword2",
+                        "snippet": "Top news snippet...",
+                        "image_url": "https://example.com/image.jpg",
+                        "categories": ["general"],
+                        "relevance_score": 0.95
+                    }
+                ]
+            }
+        """
+        try:
+            # Get top news
+            category_param = category if category else None
+            result = news_client.get_top_news(locale, category_param, limit)
+            
+            if result:
+                return json.dumps(result.model_dump(), ensure_ascii=False)
+            return json.dumps({"error": "Unable to get top news"}, ensure_ascii=False)
+            
+        except Exception as e:
+            return json.dumps({"error": f"Error getting top news: {str(e)}"}, ensure_ascii=False)
 
     # Search news
     @mcp.tool
