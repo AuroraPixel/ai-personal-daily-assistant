@@ -5,6 +5,13 @@ Unified loading and registration of all MCP tool modules
 Author: Andrew Wang
 """
 
+import sys
+import os
+
+# Add backend directory to Python path so we can import remote_api modules
+backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, backend_dir)
+
 from fastmcp import FastMCP
 from weather_tools import register_weather_tools
 from news_tools import register_news_tools
@@ -51,7 +58,12 @@ def main():
         
         # Start server
         print("🔌 Starting MCP server...")
-        mcp.run()
+        mcp.run(
+            transport="http",
+            host="127.0.0.1", 
+            port=8002,
+            path="/mcp"
+        )
         
     except Exception as e:
         print(f"❌ Error starting MCP service: {str(e)}")
