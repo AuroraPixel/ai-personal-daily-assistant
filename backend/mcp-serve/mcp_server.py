@@ -7,6 +7,7 @@ Author: Andrew Wang
 
 import sys
 import os
+import asyncio
 
 # Add backend directory to Python path so we can import remote_api modules
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,7 +23,18 @@ from data_tools import register_data_tools
 # MCP Service Configuration and Initialization
 # =============================================================================
 
-def create_mcp_server():
+weather_mcp = FastMCP("Weather")
+register_weather_tools(weather_mcp)    # Register weather tools
+news_mcp = FastMCP("News")
+register_news_tools(news_mcp)       # Register news tools
+recipe_mcp = FastMCP("Recipe")
+register_recipe_tools(recipe_mcp)     # Register recipe tools
+data_mcp = FastMCP("Data")
+register_data_tools(data_mcp)
+
+mcp = FastMCP("MainApp")
+
+async def create_mcp_server():
     """
     Create and configure MCP server
     
@@ -32,15 +44,15 @@ def create_mcp_server():
     print("🚀 Starting AI Personal Daily Assistant MCP Service...")
     
     # Create MCP instance
-    mcp = FastMCP("MainApp")
+    await mcp.import_server(weather_mcp, prefix="weather")
+    await mcp.import_server(news_mcp, prefix="news")
+    await mcp.import_server(recipe_mcp, prefix="recipe")
+    await mcp.import_server(data_mcp, prefix="data")
     
     print("📦 Registering tool modules...")
     
     # Register all tool modules
-    register_weather_tools(mcp)    # Register weather tools
-    register_news_tools(mcp)       # Register news tools
-    register_recipe_tools(mcp)     # Register recipe tools
-    register_data_tools(mcp)       # Register data tools
+    # Register data tools
     
     print("✅ All tool modules registered successfully!")
     print("🌟 MCP service is ready to handle requests")
@@ -52,12 +64,10 @@ def main():
     """
     Main function - Start MCP service
     """
-    try:
-        # Create MCP server
-        mcp = create_mcp_server()
-        
+    try:    
         # Start server
         print("🔌 Starting MCP server...")
+        asyncio.run(create_mcp_server())
         mcp.run(
             transport="http",
             host="127.0.0.1", 

@@ -4,9 +4,11 @@ import random
 import string
 import uuid
 from datetime import datetime
+from agents.model_settings import ModelSettings
 from pydantic import BaseModel
 from agents.extensions.models.litellm_model import LitellmModel
 from agents.mcp import MCPServer, MCPServerStreamableHttp
+from agents.mcp import ToolFilterContext
 from dotenv import load_dotenv
 import os
 
@@ -46,6 +48,37 @@ model = LitellmModel(
 )
 
 # =========================
+# 类型：模型配置
+# =========================
+model_setting = ModelSettings(
+    temperature=0.6, # 控制创造性
+    top_p=0.9, # 词汇的多样性
+    tool_choice="auto", # 自动选择工具
+    parallel_tool_calls=True, # 并行调用工具
+    truncation="auto", # 截断策略
+)
+
+# =========================
+# 类型：mcp工具动态策略过滤器
+# 功能描述：根据agent的名称，动态过滤出对应的mcp工具
+# 输入内容：
+#   - context: 工具过滤上下文
+#   - tool: 工具名称
+# =========================
+def tools_prefix_filter(context: ToolFilterContext, tool: str) -> bool:
+    agent_name = context.agent.name
+    if agent_name == "weather_agent":
+        return tool.startswith("weather")
+    elif agent_name == "news_agent":
+        return tool.startswith("news")
+    elif agent_name == "recipe_agent":
+        return tool.startswith("recipe")
+    elif agent_name == "data_agent":
+        return tool.startswith("data")
+    return False
+
+
+# =========================
 # 类型：MCP服务配置-模型上下文协议
 # 功能描述：配置MCP（Model Context Protocol）服务器用于扩展工具调用能力
 # 服务信息：
@@ -63,6 +96,7 @@ personal_assistant_mcp_server = MCPServerStreamableHttp(
     params={
         "url": "http://127.0.0.1:8002/mcp",
     },
+    tool_filter=tools_prefix_filter
 )
 
 # =========================
@@ -686,7 +720,8 @@ def weather_agent_instructions(
         f"{RECOMMENDED_PROMPT_PREFIX}\n"
         "您是专业的天气信息代理。如果您正在与用户交谈，您可能是从协调代理转接过来的。\n"
         "使用以下流程来支持用户。\n"
-        f"1. 用户当前位置：{location}。如果位置未确定，询问用户所在位置。确认位置信息后，使用天气查询工具获取准确信息。\n"
+        f"1. 用户当前位置：{location}。如果位置未确定,询问用户所在位置。确认位置信息后，使用天气查询工具获取准确信息。\n"
+        "2. 如果位置信息是文字描述，请你自我转为经纬度坐标，然后再调用工具查询信息。\n"
         "2. 使用MCP天气查询工具获取详细的天气信息，包括当前天气、未来几天预报等。\n"
         "3. 根据天气情况提供实用的生活建议，如穿衣建议、出行建议、健康提醒等。\n"
         "4. 可以使用天气地图工具为用户显示交互式天气地图。\n"

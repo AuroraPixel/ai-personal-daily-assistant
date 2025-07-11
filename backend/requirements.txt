@@ -1,3 +1,5 @@
+openai-agents
+openai-agents[litellm]
 fastmcp
 requests
 python-dotenv

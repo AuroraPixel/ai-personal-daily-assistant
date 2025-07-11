@@ -13,6 +13,9 @@ from remote_api.news.models import (
     get_category_error_message, get_language_error_message, get_locale_error_message
 )
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Initialize news client
 news_client = NewsClient()
 

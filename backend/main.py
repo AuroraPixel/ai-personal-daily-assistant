@@ -5,6 +5,8 @@ AI 个人日常助手 - 主程序 (AI Personal Daily Assistant - Main Program)
 """
 
 from datetime import datetime
+import asyncio
+from agents import Runner
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,10 +17,17 @@ import uvicorn
 # 导入环境变量加载 (Import environment variable loading)
 from dotenv import load_dotenv
 load_dotenv()
-news_client = NewsClient()
 
 
+from agent.personal_assistant import (
+    coordination_agent,
+)
 
-news_response = news_client.get_news(language="zh", category="general", limit=10)
+async def main():
+ input = "今天天气怎么样？"
+ result = await Runner.run(coordination_agent,input=input)
+ print(result)
 
-print(news_response)
+if __name__ == "__main__":
+    asyncio.run(main())
+
