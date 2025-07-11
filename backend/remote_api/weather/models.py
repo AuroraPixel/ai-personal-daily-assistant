@@ -4,12 +4,11 @@ Weather API Data Models
 Author: Andrew Wang
 """
 
-from dataclasses import dataclass
-from typing import Optional, List
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict, Any
 
 
-@dataclass
-class WeatherRequest:
+class WeatherRequest(BaseModel):
     """Weather API request parameters"""
     latitude: float
     longitude: float
@@ -19,64 +18,119 @@ class WeatherRequest:
     hourly: Optional[List[str]] = None
 
 
-@dataclass
-class CurrentWeather:
-    """Current weather data"""
-    temperature: float
-    windspeed: float
-    winddirection: int
-    weathercode: int
-    is_day: int
+class CurrentWeatherData(BaseModel):
+    """Current weather data (real-time conditions)"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
+    time: str                           # Current observation time (ISO8601)
+    interval: Optional[int] = None      # Observation interval in seconds
+    temperature: float                  # Temperature in Celsius
+    windspeed: float                   # Wind speed in km/h  
+    winddirection: int                 # Wind direction in degrees (0-360°)
+    is_day: int                        # Daytime indicator (1=day, 0=night)
+    weathercode: int                   # Weather condition code (WMO standard)
+
+
+class CurrentWeatherUnits(BaseModel):
+    """Current weather measurement units"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
     time: str
+    interval: str
+    temperature: str
+    windspeed: str
+    winddirection: str
+    is_day: str
+    weathercode: str
 
 
-@dataclass
-class DailyWeather:
-    """Daily weather data"""
-    time: List[str]
-    temperature_2m_max: Optional[List[float]] = None
-    temperature_2m_min: Optional[List[float]] = None
-    precipitation_sum: Optional[List[float]] = None
-    weathercode: Optional[List[int]] = None
-    sunrise: Optional[List[str]] = None
-    sunset: Optional[List[str]] = None
+class DailyForecastData(BaseModel):
+    """Daily weather forecast data (multi-day predictions)"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
+    time: List[str]                                      # Forecast dates (ISO8601)
+    temperature_2m_max: Optional[List[float]] = None     # Daily maximum temperature in Celsius
+    temperature_2m_min: Optional[List[float]] = None     # Daily minimum temperature in Celsius
+    precipitation_sum: Optional[List[float]] = None      # Total daily precipitation in mm
+    weathercode: Optional[List[int]] = None              # Daily weather condition codes
+    sunrise: Optional[List[str]] = None                  # Sunrise times (ISO8601)
+    sunset: Optional[List[str]] = None                   # Sunset times (ISO8601)
 
 
-@dataclass
-class HourlyWeather:
-    """Hourly weather data"""
-    time: List[str]
-    temperature_2m: Optional[List[float]] = None
-    precipitation: Optional[List[float]] = None
-    weathercode: Optional[List[int]] = None
-    windspeed_10m: Optional[List[float]] = None
+class DailyForecastUnits(BaseModel):
+    """Daily forecast measurement units"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
+    time: str
+    temperature_2m_max: str
+    temperature_2m_min: str
+    precipitation_sum: str
+    weathercode: str
 
 
-@dataclass
-class WeatherResponse:
-    """Weather API response data"""
-    latitude: float
-    longitude: float
-    generationtime_ms: float
-    utc_offset_seconds: int
-    timezone: str
-    timezone_abbreviation: str
-    elevation: float
-    current_weather: Optional[CurrentWeather] = None
-    daily: Optional[DailyWeather] = None
-    hourly: Optional[HourlyWeather] = None
+class HourlyForecastData(BaseModel):
+    """Hourly weather forecast data (detailed predictions)"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
+    time: List[str]                                  # Forecast hours (ISO8601)
+    temperature_2m: Optional[List[float]] = None     # Hourly temperature in Celsius
+    precipitation: Optional[List[float]] = None      # Hourly precipitation in mm
+    weathercode: Optional[List[int]] = None          # Hourly weather condition codes
+    windspeed_10m: Optional[List[float]] = None      # Hourly wind speed in km/h
 
 
-# Weather code mapping
-WEATHER_CODE_MAP = {
+class HourlyForecastUnits(BaseModel):
+    """Hourly forecast measurement units"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
+    time: str
+    temperature_2m: str
+    precipitation: str
+    weathercode: str
+    windspeed_10m: str
+
+
+class WeatherApiResponse(BaseModel):
+    """Universal weather API response for all endpoints"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
+    # Basic response metadata
+    latitude: float                              # Location latitude in decimal degrees
+    longitude: float                             # Location longitude in decimal degrees
+    generationtime_ms: float                     # API response generation time in milliseconds
+    utc_offset_seconds: int                      # UTC offset in seconds
+    timezone: str                                # Timezone identifier (e.g., "GMT", "Europe/London")
+    timezone_abbreviation: str                   # Timezone abbreviation (e.g., "GMT", "CET")
+    elevation: float                             # Location elevation in meters above sea level
+    
+    # Current weather (for current weather endpoint)
+    current_weather_units: Optional[CurrentWeatherUnits] = None
+    current_weather: Optional[CurrentWeatherData] = None
+    
+    # Daily forecast (for daily forecast endpoint) 
+    daily_units: Optional[DailyForecastUnits] = None
+    daily: Optional[DailyForecastData] = None
+    
+    # Hourly forecast (for hourly forecast endpoint)
+    hourly_units: Optional[HourlyForecastUnits] = None
+    hourly: Optional[HourlyForecastData] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "WeatherApiResponse":
+        """Create WeatherApiResponse from dictionary using Pydantic's automatic mapping"""
+        return cls(**data)
+
+
+# Weather condition code mapping for easy understanding
+WEATHER_CONDITION_DESCRIPTIONS = {
     0: "Clear sky",
-    1: "Mainly clear",
+    1: "Mainly clear", 
     2: "Partly cloudy",
     3: "Overcast",
     45: "Fog",
     48: "Depositing rime fog",
     51: "Light drizzle",
-    53: "Moderate drizzle",
+    53: "Moderate drizzle", 
     55: "Dense drizzle",
     61: "Slight rain",
     63: "Moderate rain",
@@ -90,58 +144,6 @@ WEATHER_CODE_MAP = {
 }
 
 
-def get_weather_description(weather_code: int) -> str:
-    """Get weather description based on weather code"""
-    return WEATHER_CODE_MAP.get(weather_code, "Unknown weather")
-
-
-def weather_response_from_dict(data: dict) -> WeatherResponse:
-    """Create WeatherResponse object from API response dictionary"""
-    current_weather = None
-    if "current_weather" in data:
-        cw_data = data["current_weather"]
-        current_weather = CurrentWeather(
-            temperature=cw_data["temperature"],
-            windspeed=cw_data["windspeed"],
-            winddirection=cw_data["winddirection"],
-            weathercode=cw_data["weathercode"],
-            is_day=cw_data["is_day"],
-            time=cw_data["time"]
-        )
-    
-    daily = None
-    if "daily" in data:
-        daily_data = data["daily"]
-        daily = DailyWeather(
-            time=daily_data["time"],
-            temperature_2m_max=daily_data.get("temperature_2m_max"),
-            temperature_2m_min=daily_data.get("temperature_2m_min"),
-            precipitation_sum=daily_data.get("precipitation_sum"),
-            weathercode=daily_data.get("weathercode"),
-            sunrise=daily_data.get("sunrise"),
-            sunset=daily_data.get("sunset")
-        )
-    
-    hourly = None
-    if "hourly" in data:
-        hourly_data = data["hourly"]
-        hourly = HourlyWeather(
-            time=hourly_data["time"],
-            temperature_2m=hourly_data.get("temperature_2m"),
-            precipitation=hourly_data.get("precipitation"),
-            weathercode=hourly_data.get("weathercode"),
-            windspeed_10m=hourly_data.get("windspeed_10m")
-        )
-    
-    return WeatherResponse(
-        latitude=data["latitude"],
-        longitude=data["longitude"],
-        generationtime_ms=data["generationtime_ms"],
-        utc_offset_seconds=data["utc_offset_seconds"],
-        timezone=data["timezone"],
-        timezone_abbreviation=data["timezone_abbreviation"],
-        elevation=data["elevation"],
-        current_weather=current_weather,
-        daily=daily,
-        hourly=hourly
-    ) 
+def get_weather_condition_description(weather_condition_code: int) -> str:
+    """Get weather condition description based on weather condition code"""
+    return WEATHER_CONDITION_DESCRIPTIONS.get(weather_condition_code, "Unknown weather condition") 

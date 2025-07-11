@@ -6,7 +6,10 @@ Author: Andrew Wang
 
 from typing import Optional, List
 from core.http_core.client import APIClient
-from .models import WeatherRequest, WeatherResponse, weather_response_from_dict, get_weather_description
+from .models import (
+    WeatherRequest, WeatherApiResponse, 
+    get_weather_condition_description
+)
 
 
 class WeatherClient:
@@ -15,16 +18,16 @@ class WeatherClient:
     def __init__(self):
         self.client = APIClient("https://api.open-meteo.com/v1")
     
-    def get_current_weather(self, latitude: float, longitude: float) -> Optional[WeatherResponse]:
+    def get_current_weather(self, latitude: float, longitude: float) -> Optional[WeatherApiResponse]:
         """
-        Get current weather
+        Get current weather conditions
         
         Args:
-            latitude: Latitude
-            longitude: Longitude
+            latitude: Location latitude in decimal degrees
+            longitude: Location longitude in decimal degrees
             
         Returns:
-            Weather response data or None
+            WeatherApiResponse entity or None
         """
         params = {
             "latitude": latitude,
@@ -34,25 +37,75 @@ class WeatherClient:
         
         data = self.client.get("/forecast", params=params)
         if data:
-            return weather_response_from_dict(data)
+            return WeatherApiResponse.from_dict(data)
+        return None
+    
+    def get_daily_forecast(self, latitude: float, longitude: float, 
+                          forecast_days: int = 7) -> Optional[WeatherApiResponse]:
+        """
+        Get daily weather forecast
+        
+        Args:
+            latitude: Location latitude in decimal degrees
+            longitude: Location longitude in decimal degrees
+            forecast_days: Number of forecast days (1-16, default 7)
+            
+        Returns:
+            WeatherApiResponse entity or None
+        """
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "forecast_days": forecast_days,
+            "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode,sunrise,sunset"
+        }
+        
+        data = self.client.get("/forecast", params=params)
+        if data:
+            return WeatherApiResponse.from_dict(data)
+        return None
+    
+    def get_hourly_forecast(self, latitude: float, longitude: float, 
+                           forecast_days: int = 3) -> Optional[WeatherApiResponse]:
+        """
+        Get hourly weather forecast
+        
+        Args:
+            latitude: Location latitude in decimal degrees
+            longitude: Location longitude in decimal degrees
+            forecast_days: Number of forecast days (1-16, default 3)
+            
+        Returns:
+            WeatherApiResponse entity or None
+        """
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "forecast_days": forecast_days,
+            "hourly": "temperature_2m,precipitation,weathercode,windspeed_10m"
+        }
+        
+        data = self.client.get("/forecast", params=params)
+        if data:
+            return WeatherApiResponse.from_dict(data)
         return None
     
     def get_weather_forecast(self, latitude: float, longitude: float, 
                            forecast_days: int = 7,
                            daily_vars: Optional[List[str]] = None,
-                           hourly_vars: Optional[List[str]] = None) -> Optional[WeatherResponse]:
+                           hourly_vars: Optional[List[str]] = None) -> Optional[WeatherApiResponse]:
         """
-        Get weather forecast
+        Get custom weather forecast with specified variables
         
         Args:
-            latitude: Latitude
-            longitude: Longitude
-            forecast_days: Number of forecast days
-            daily_vars: List of daily variables
-            hourly_vars: List of hourly variables
+            latitude: Location latitude in decimal degrees
+            longitude: Location longitude in decimal degrees
+            forecast_days: Number of forecast days (1-16)
+            daily_vars: List of daily forecast variables
+            hourly_vars: List of hourly forecast variables
             
         Returns:
-            Weather response data or None
+            WeatherApiResponse entity or None
         """
         params = {
             "latitude": latitude,
@@ -68,126 +121,39 @@ class WeatherClient:
         
         data = self.client.get("/forecast", params=params)
         if data:
-            return weather_response_from_dict(data)
+            return WeatherApiResponse.from_dict(data)
         return None
     
-    def get_daily_forecast(self, latitude: float, longitude: float, 
-                          forecast_days: int = 7) -> Optional[WeatherResponse]:
+    def get_categories(self) -> List[str]:
         """
-        Get daily weather forecast
+        Get available weather forecast categories
         
-        Args:
-            latitude: Latitude
-            longitude: Longitude
-            forecast_days: Number of forecast days
-            
         Returns:
-            Weather response data or None
+            List of forecast categories
         """
-        daily_vars = [
-            "temperature_2m_max",
-            "temperature_2m_min",
-            "precipitation_sum",
-            "weathercode",
-            "sunrise",
-            "sunset"
+        return ["current", "daily", "hourly"]
+    
+    def get_available_daily_variables(self) -> List[str]:
+        """
+        Get available daily forecast variables
+        
+        Returns:
+            List of daily variables
+        """
+        return [
+            "temperature_2m_max", "temperature_2m_min", "precipitation_sum",
+            "weathercode", "sunrise", "sunset", "windspeed_10m_max", 
+            "windgusts_10m_max", "winddirection_10m_dominant"
         ]
-        
-        return self.get_weather_forecast(
-            latitude=latitude,
-            longitude=longitude,
-            forecast_days=forecast_days,
-            daily_vars=daily_vars
-        )
     
-    def get_hourly_forecast(self, latitude: float, longitude: float, 
-                           forecast_days: int = 3) -> Optional[WeatherResponse]:
+    def get_available_hourly_variables(self) -> List[str]:
         """
-        Get hourly weather forecast
+        Get available hourly forecast variables
         
-        Args:
-            latitude: Latitude
-            longitude: Longitude
-            forecast_days: Number of forecast days
-            
         Returns:
-            Weather response data or None
+            List of hourly variables
         """
-        hourly_vars = [
-            "temperature_2m",
-            "precipitation",
-            "weathercode",
-            "windspeed_10m"
-        ]
-        
-        return self.get_weather_forecast(
-            latitude=latitude,
-            longitude=longitude,
-            forecast_days=forecast_days,
-            hourly_vars=hourly_vars
-        )
-    
-    def format_current_weather(self, weather_response: WeatherResponse) -> str:
-        """
-        Format current weather information
-        
-        Args:
-            weather_response: Weather response data
-            
-        Returns:
-            Formatted weather information string
-        """
-        if not weather_response.current_weather:
-            return "Current weather data unavailable"
-        
-        current = weather_response.current_weather
-        description = get_weather_description(current.weathercode)
-        day_night = "Day" if current.is_day else "Night"
-        
-        return f"""
-Current Weather ({weather_response.timezone}):
-Time: {current.time}
-Weather: {description}
-Temperature: {current.temperature}°C
-Wind Speed: {current.windspeed} km/h
-Wind Direction: {current.winddirection}°
-Period: {day_night}
-Location: {weather_response.latitude}, {weather_response.longitude}
-Elevation: {weather_response.elevation}m
-        """.strip()
-    
-    def format_daily_forecast(self, weather_response: WeatherResponse) -> str:
-        """
-        Format daily weather forecast
-        
-        Args:
-            weather_response: Weather response data
-            
-        Returns:
-            Formatted forecast information string
-        """
-        if not weather_response.daily:
-            return "Daily weather forecast data unavailable"
-        
-        daily = weather_response.daily
-        forecast_lines = [f"Daily Weather Forecast ({weather_response.timezone}):"]
-        
-        for i, date in enumerate(daily.time):
-            line = f"Date: {date}"
-            
-            if daily.temperature_2m_max and daily.temperature_2m_min:
-                line += f", Temperature: {daily.temperature_2m_min[i]}°C - {daily.temperature_2m_max[i]}°C"
-            
-            if daily.precipitation_sum:
-                line += f", Precipitation: {daily.precipitation_sum[i]}mm"
-            
-            if daily.weathercode:
-                description = get_weather_description(daily.weathercode[i])
-                line += f", Weather: {description}"
-            
-            if daily.sunrise and daily.sunset:
-                line += f", Sunrise: {daily.sunrise[i]}, Sunset: {daily.sunset[i]}"
-            
-            forecast_lines.append(line)
-        
-        return "\n".join(forecast_lines) 
+        return [
+            "temperature_2m", "precipitation", "weathercode", "windspeed_10m",
+            "winddirection_10m", "cloudcover", "pressure_msl", "surface_pressure"
+        ] 

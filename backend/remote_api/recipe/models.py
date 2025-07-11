@@ -4,50 +4,94 @@ Recipe API Data Models
 Author: Andrew Wang
 """
 
-from dataclasses import dataclass
-from typing import Optional, List, Dict
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict, Any
 
 
-@dataclass
-class RecipeSearchRequest:
+class RecipeSearchRequest(BaseModel):
     """Recipe search request parameters"""
     search_term: str
     search_type: str = "name"  # name, ingredient, category, area
 
 
-@dataclass
-class Recipe:
-    """Recipe detailed information"""
-    id: str
-    name: str
-    category: str
-    area: str
-    instructions: str
-    image_url: Optional[str] = None
-    tags: Optional[str] = None
-    youtube_url: Optional[str] = None
-    ingredients: Optional[List[str]] = None
-    measures: Optional[List[str]] = None
+class Meal(BaseModel):
+    """Universal meal entity for all API endpoints"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
+    # Required fields (present in all responses)
+    idMeal: str
+    strMeal: str
+    
+    # Optional fields (present in detailed responses)
+    strMealAlternate: Optional[str] = None
+    strCategory: Optional[str] = None
+    strArea: Optional[str] = None
+    strInstructions: Optional[str] = None
+    strMealThumb: Optional[str] = None
+    strTags: Optional[str] = None
+    strYoutube: Optional[str] = None
+    
+    # Ingredients (1-20)
+    strIngredient1: Optional[str] = None
+    strIngredient2: Optional[str] = None
+    strIngredient3: Optional[str] = None
+    strIngredient4: Optional[str] = None
+    strIngredient5: Optional[str] = None
+    strIngredient6: Optional[str] = None
+    strIngredient7: Optional[str] = None
+    strIngredient8: Optional[str] = None
+    strIngredient9: Optional[str] = None
+    strIngredient10: Optional[str] = None
+    strIngredient11: Optional[str] = None
+    strIngredient12: Optional[str] = None
+    strIngredient13: Optional[str] = None
+    strIngredient14: Optional[str] = None
+    strIngredient15: Optional[str] = None
+    strIngredient16: Optional[str] = None
+    strIngredient17: Optional[str] = None
+    strIngredient18: Optional[str] = None
+    strIngredient19: Optional[str] = None
+    strIngredient20: Optional[str] = None
+    
+    # Measures (1-20)
+    strMeasure1: Optional[str] = None
+    strMeasure2: Optional[str] = None
+    strMeasure3: Optional[str] = None
+    strMeasure4: Optional[str] = None
+    strMeasure5: Optional[str] = None
+    strMeasure6: Optional[str] = None
+    strMeasure7: Optional[str] = None
+    strMeasure8: Optional[str] = None
+    strMeasure9: Optional[str] = None
+    strMeasure10: Optional[str] = None
+    strMeasure11: Optional[str] = None
+    strMeasure12: Optional[str] = None
+    strMeasure13: Optional[str] = None
+    strMeasure14: Optional[str] = None
+    strMeasure15: Optional[str] = None
+    strMeasure16: Optional[str] = None
+    strMeasure17: Optional[str] = None
+    strMeasure18: Optional[str] = None
+    strMeasure19: Optional[str] = None
+    strMeasure20: Optional[str] = None
+    
+    # Additional fields (present in detailed responses)
+    strSource: Optional[str] = None
+    strImageSource: Optional[str] = None
+    strCreativeCommonsConfirmed: Optional[str] = None
+    dateModified: Optional[str] = None
 
 
-@dataclass
-class RecipeListItem:
-    """Recipe list item (simplified version)"""
-    id: str
-    name: str
-    image_url: Optional[str] = None
+class ApiResponse(BaseModel):
+    """Universal API response for all endpoints"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
+    meals: Optional[List[Meal]] = None
 
-
-@dataclass
-class RecipeSearchResponse:
-    """Recipe search response"""
-    meals: Optional[List[Recipe]] = None
-
-
-@dataclass
-class RecipeListResponse:
-    """Recipe list response"""
-    meals: Optional[List[RecipeListItem]] = None
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ApiResponse":
+        """Create ApiResponse from dictionary using Pydantic's automatic mapping"""
+        return cls(**data)
 
 
 # Available recipe categories
@@ -64,108 +108,4 @@ RECIPE_AREAS = [
     "Jamaican", "Japanese", "Kenyan", "Malaysian", "Mexican", "Moroccan", 
     "Polish", "Portuguese", "Russian", "Spanish", "Thai", "Tunisian", 
     "Turkish", "Vietnamese"
-]
-
-
-def extract_ingredients_and_measures(meal_data: Dict) -> tuple[List[str], List[str]]:
-    """Extract ingredients and measures from meal data"""
-    ingredients = []
-    measures = []
-    
-    for i in range(1, 21):  # TheMealDB supports up to 20 ingredients
-        ingredient_key = f"strIngredient{i}"
-        measure_key = f"strMeasure{i}"
-        
-        ingredient_raw = meal_data.get(ingredient_key, "")
-        measure_raw = meal_data.get(measure_key, "")
-        
-        # Safely handle potentially None values
-        ingredient = ingredient_raw.strip() if ingredient_raw else ""
-        measure = measure_raw.strip() if measure_raw else ""
-        
-        if ingredient and ingredient.lower() != "null":
-            ingredients.append(ingredient)
-            measures.append(measure if measure and measure.lower() != "null" else "")
-    
-    return ingredients, measures
-
-
-def recipe_from_dict(meal_data: Dict) -> Recipe:
-    """Create Recipe object from API response dictionary"""
-    ingredients, measures = extract_ingredients_and_measures(meal_data)
-    
-    return Recipe(
-        id=meal_data["idMeal"],
-        name=meal_data["strMeal"],
-        category=meal_data["strCategory"],
-        area=meal_data["strArea"],
-        instructions=meal_data["strInstructions"],
-        image_url=meal_data.get("strMealThumb"),
-        tags=meal_data.get("strTags"),
-        youtube_url=meal_data.get("strYoutube"),
-        ingredients=ingredients,
-        measures=measures
-    )
-
-
-def recipe_list_item_from_dict(meal_data: Dict) -> RecipeListItem:
-    """Create RecipeListItem object from API response dictionary"""
-    return RecipeListItem(
-        id=meal_data["idMeal"],
-        name=meal_data["strMeal"],
-        image_url=meal_data.get("strMealThumb")
-    )
-
-
-def recipe_search_response_from_dict(data: Dict) -> RecipeSearchResponse:
-    """Create RecipeSearchResponse object from API response dictionary"""
-    meals = None
-    if data.get("meals"):
-        meals = [recipe_from_dict(meal_data) for meal_data in data["meals"]]
-    
-    return RecipeSearchResponse(meals=meals)
-
-
-def recipe_list_response_from_dict(data: Dict) -> RecipeListResponse:
-    """Create RecipeListResponse object from API response dictionary"""
-    meals = None
-    if data.get("meals"):
-        meals = [recipe_list_item_from_dict(meal_data) for meal_data in data["meals"]]
-    
-    return RecipeListResponse(meals=meals)
-
-
-def format_recipe_summary(recipe: Recipe) -> str:
-    """Format recipe summary"""
-    summary = f"""
-Recipe Name: {recipe.name}
-Category: {recipe.category}
-Area: {recipe.area}
-    """.strip()
-    
-    if recipe.tags:
-        summary += f"\nTags: {recipe.tags}"
-    
-    if recipe.ingredients:
-        summary += f"\nIngredients: {len(recipe.ingredients)} items"
-    
-    return summary
-
-
-def format_recipe_details(recipe: Recipe) -> str:
-    """Format recipe detailed information"""
-    details = format_recipe_summary(recipe)
-    
-    if recipe.ingredients and recipe.measures:
-        details += "\n\nIngredients List:"
-        for ingredient, measure in zip(recipe.ingredients, recipe.measures):
-            measure_text = f" - {measure}" if measure else ""
-            details += f"\n• {ingredient}{measure_text}"
-    
-    if recipe.instructions:
-        details += f"\n\nInstructions:\n{recipe.instructions}"
-    
-    if recipe.youtube_url:
-        details += f"\n\nVideo Tutorial: {recipe.youtube_url}"
-    
-    return details 
+] 
