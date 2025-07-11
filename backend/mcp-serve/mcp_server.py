@@ -32,7 +32,7 @@ def create_mcp_server():
     print("🚀 Starting AI Personal Daily Assistant MCP Service...")
     
     # Create MCP instance
-    mcp = FastMCP("AI Personal Daily Assistant MCP")
+    mcp = FastMCP("MainApp")
     
     print("📦 Registering tool modules...")
     
