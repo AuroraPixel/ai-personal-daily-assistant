@@ -1,5 +1,7 @@
 """
-Recipe API模块
+Recipe API Module
+
+Author: Andrew Wang
 """
 
 from .client import RecipeClient

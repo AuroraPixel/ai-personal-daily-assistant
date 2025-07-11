@@ -1,5 +1,7 @@
 """
-新闻API客户端
+News API Client
+
+Author: Andrew Wang
 """
 import os
 from typing import Optional, List
@@ -15,41 +17,41 @@ from .models import (
 
 
 class NewsClient:
-    """The News API新闻客户端"""
+    """The News API Client"""
     
     def __init__(self):
         self.client = APIClient("https://api.thenewsapi.com/v1")
-        # 从环境变量获取API token
+        # Get API token from environment variables
         self.api_token = os.getenv("NEWS_API_TOKEN")
         if not self.api_token:
-            print("警告：未找到环境变量 NEWS_API_TOKEN，新闻API可能无法正常工作")
+            print("Warning: Environment variable NEWS_API_TOKEN not found, News API may not work properly")
     
     def _add_auth_params(self, params: dict) -> dict:
-        """为请求参数添加认证信息"""
+        """Add authentication information to request parameters"""
         if self.api_token:
             params["api_token"] = self.api_token
         return params
     
     def _debug_request(self, endpoint: str, params: dict):
-        """调试输出请求信息"""
-        print(f"调试：请求端点 {endpoint}")
-        print(f"调试：请求参数 {params}")
+        """Debug output request information"""
+        print(f"Debug: Request endpoint {endpoint}")
+        print(f"Debug: Request parameters {params}")
         if not self.api_token:
-            print("调试：未设置API token")
+            print("Debug: API token not set")
     
     def get_top_headlines(self, language: str = "en", 
                          category: Optional[str] = None,
                          limit: int = 10) -> Optional[NewsResponse]:
         """
-        获取头条新闻
+        Get top headlines
         
         Args:
-            language: 语言代码
-            category: 新闻分类
-            limit: 返回新闻数量
+            language: Language code
+            category: News category
+            limit: Number of news items to return
             
         Returns:
-            新闻响应或None
+            News response or None
         """
         params = {
             "language": language,
@@ -58,11 +60,11 @@ class NewsClient:
         
         if category:
             if category not in NEWS_CATEGORIES:
-                print(f"无效分类: {category}. 可用分类: {NEWS_CATEGORIES}")
+                print(f"Invalid category: {category}. Available categories: {NEWS_CATEGORIES}")
                 return None
             params["categories"] = category
         
-        # 添加认证参数
+        # Add authentication parameters
         params = self._add_auth_params(params)
         
         data = self.client.get("/news/all", params=params)
@@ -70,7 +72,7 @@ class NewsClient:
         if data:
             return news_response_from_dict(data)
         else:
-            print("注意：新闻API请求失败。请检查API密钥是否正确。")
+            print("Note: News API request failed. Please check if API key is correct.")
             return None
     
     def search_news(self, query: str, 
@@ -78,18 +80,18 @@ class NewsClient:
                    days_back: int = 7,
                    limit: int = 10) -> Optional[NewsResponse]:
         """
-        搜索新闻
+        Search news
         
         Args:
-            query: 搜索关键词
-            language: 语言代码
-            days_back: 搜索天数范围
-            limit: 返回新闻数量
+            query: Search keywords
+            language: Language code
+            days_back: Number of days to search back
+            limit: Number of news items to return
             
         Returns:
-            新闻响应或None
+            News response or None
         """
-        # 计算日期范围
+        # Calculate date range
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
         
@@ -101,7 +103,7 @@ class NewsClient:
             "limit": limit
         }
         
-        # 添加认证参数
+        # Add authentication parameters
         params = self._add_auth_params(params)
         
         data = self.client.get("/news/all", params=params)
@@ -109,161 +111,161 @@ class NewsClient:
         if data:
             return news_response_from_dict(data)
         else:
-            print("注意：新闻搜索请求失败。请检查API密钥是否正确。")
+            print("Note: News search request failed. Please check if API key is correct.")
             return None
     
     def get_category_news(self, category: str, 
                          language: str = "en",
                          limit: int = 10) -> Optional[NewsResponse]:
         """
-        获取分类新闻
+        Get category news
         
         Args:
-            category: 新闻分类
-            language: 语言代码
-            limit: 返回新闻数量
+            category: News category
+            language: Language code
+            limit: Number of news items to return
             
         Returns:
-            新闻响应或None
+            News response or None
         """
         if category not in NEWS_CATEGORIES:
-            print(f"无效分类: {category}. 可用分类: {NEWS_CATEGORIES}")
+            print(f"Invalid category: {category}. Available categories: {NEWS_CATEGORIES}")
             return None
         
         return self.get_top_headlines(language=language, category=category, limit=limit)
     
     def get_tech_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """获取科技新闻"""
+        """Get technology news"""
         return self.get_category_news("technology", language, limit)
     
     def get_business_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """获取商业新闻"""
+        """Get business news"""
         return self.get_category_news("business", language, limit)
     
     def get_sports_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """获取体育新闻"""
+        """Get sports news"""
         return self.get_category_news("sports", language, limit)
     
     def get_health_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """获取健康新闻"""
+        """Get health news"""
         return self.get_category_news("health", language, limit)
     
     def get_science_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """获取科学新闻"""
+        """Get science news"""
         return self.get_category_news("science", language, limit)
     
     def get_entertainment_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """获取娱乐新闻"""
+        """Get entertainment news"""
         return self.get_category_news("entertainment", language, limit)
     
     def get_general_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """获取综合新闻"""
+        """Get general news"""
         return self.get_category_news("general", language, limit)
     
     def get_available_categories(self) -> List[str]:
-        """获取可用的新闻分类"""
+        """Get available news categories"""
         return NEWS_CATEGORIES.copy()
     
     def get_available_locales(self) -> List[str]:
-        """获取可用的地区代码"""
+        """Get available locale codes"""
         return NEWS_LOCALES.copy()
     
     def get_available_languages(self) -> List[str]:
-        """获取可用的语言代码"""
+        """Get available language codes"""
         return NEWS_LANGUAGES.copy()
     
     def format_headlines(self, response: NewsResponse) -> str:
         """
-        格式化头条新闻
+        Format headlines
         
         Args:
-            response: 新闻响应
+            response: News response
             
         Returns:
-            格式化的新闻字符串
+            Formatted news string
         """
         if not response.data:
-            return "没有找到相关新闻"
+            return "No related news found"
         
-        header = f"头条新闻 (共找到 {response.meta.found} 条，显示 {response.meta.returned} 条):\n"
+        header = f"Top Headlines (Found {response.meta.found}, showing {response.meta.returned}):\n"
         return header + format_news_list(response.data)
     
     def format_search_results(self, response: NewsResponse, query: str) -> str:
         """
-        格式化搜索结果
+        Format search results
         
         Args:
-            response: 新闻响应
-            query: 搜索关键词
+            response: News response
+            query: Search keywords
             
         Returns:
-            格式化的搜索结果字符串
+            Formatted search results string
         """
         if not response.data:
-            return f"没有找到与 '{query}' 相关的新闻"
+            return f"No news found related to '{query}'"
         
-        header = f"搜索 '{query}' 的结果 (共找到 {response.meta.found} 条，显示 {response.meta.returned} 条):\n"
+        header = f"Search results for '{query}' (Found {response.meta.found}, showing {response.meta.returned}):\n"
         return header + format_news_list(response.data)
     
     def format_category_news(self, response: NewsResponse, category: str) -> str:
         """
-        格式化分类新闻
+        Format category news
         
         Args:
-            response: 新闻响应
-            category: 分类
+            response: News response
+            category: Category
             
         Returns:
-            格式化的分类新闻字符串
+            Formatted category news string
         """
         if not response.data:
-            return f"没有找到 {get_category_display_name(category)} 新闻"
+            return f"No {get_category_display_name(category)} news found"
         
         category_name = get_category_display_name(category)
-        header = f"{category_name}新闻 (共找到 {response.meta.found} 条，显示 {response.meta.returned} 条):\n"
+        header = f"{category_name} News (Found {response.meta.found}, showing {response.meta.returned}):\n"
         return header + format_news_list(response.data)
     
     def get_article_details(self, article: NewsArticle) -> str:
         """
-        获取文章详细信息
+        Get article details
         
         Args:
-            article: 新闻文章
+            article: News article
             
         Returns:
-            格式化的文章详细信息
+            Formatted article details
         """
         return format_news_article(article)
     
     def comprehensive_news_search(self, query: str, 
                                  max_per_category: int = 3) -> str:
         """
-        综合新闻搜索
+        Comprehensive news search
         
         Args:
-            query: 搜索关键词
-            max_per_category: 每个分类的最大结果数
+            query: Search keywords
+            max_per_category: Maximum results per category
             
         Returns:
-            综合搜索结果字符串
+            Comprehensive search results string
         """
         results = []
         
-        # 搜索相关新闻
+        # Search related news
         search_results = self.search_news(query, limit=max_per_category * 2)
         if search_results and search_results.data:
-            results.append(f"搜索结果 '{query}':")
+            results.append(f"Search results for '{query}':")
             results.append(format_news_list(search_results.data[:max_per_category]))
         
-        # 尝试匹配分类
+        # Try to match categories
         query_lower = query.lower()
         category_matches = {
-            "technology": ["tech", "technology", "科技", "技术"],
-            "business": ["business", "finance", "商业", "金融"],
-            "sports": ["sports", "体育", "运动"],
-            "health": ["health", "medical", "健康", "医疗"],
-            "science": ["science", "research", "科学", "研究"],
-            "entertainment": ["entertainment", "movie", "娱乐", "电影"]
+            "technology": ["tech", "technology", "ai", "software"],
+            "business": ["business", "finance", "economy", "market"],
+            "sports": ["sports", "game", "match", "tournament"],
+            "health": ["health", "medical", "covid", "vaccine"],
+            "science": ["science", "research", "study", "discovery"],
+            "entertainment": ["entertainment", "movie", "celebrity", "film"]
         }
         
         for category, keywords in category_matches.items():
@@ -271,8 +273,8 @@ class NewsClient:
                 category_results = self.get_category_news(category, limit=max_per_category)
                 if category_results and category_results.data:
                     category_name = get_category_display_name(category)
-                    results.append(f"\n{category_name}相关新闻:")
+                    results.append(f"\n{category_name} Related News:")
                     results.append(format_news_list(category_results.data))
                 break
         
-        return "\n\n".join(results) if results else f"没有找到与 '{query}' 相关的新闻" 
+        return "\n\n".join(results) if results else f"No news found related to '{query}'" 

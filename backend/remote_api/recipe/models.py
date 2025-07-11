@@ -1,5 +1,7 @@
 """
-食谱API数据模型
+Recipe API Data Models
+
+Author: Andrew Wang
 """
 
 from dataclasses import dataclass
@@ -8,14 +10,14 @@ from typing import Optional, List, Dict
 
 @dataclass
 class RecipeSearchRequest:
-    """食谱搜索请求参数"""
+    """Recipe search request parameters"""
     search_term: str
     search_type: str = "name"  # name, ingredient, category, area
 
 
 @dataclass
 class Recipe:
-    """食谱详细信息"""
+    """Recipe detailed information"""
     id: str
     name: str
     category: str
@@ -30,7 +32,7 @@ class Recipe:
 
 @dataclass
 class RecipeListItem:
-    """食谱列表项（简化版）"""
+    """Recipe list item (simplified version)"""
     id: str
     name: str
     image_url: Optional[str] = None
@@ -38,24 +40,24 @@ class RecipeListItem:
 
 @dataclass
 class RecipeSearchResponse:
-    """食谱搜索响应"""
+    """Recipe search response"""
     meals: Optional[List[Recipe]] = None
 
 
 @dataclass
 class RecipeListResponse:
-    """食谱列表响应"""
+    """Recipe list response"""
     meals: Optional[List[RecipeListItem]] = None
 
 
-# 可用的食谱分类
+# Available recipe categories
 RECIPE_CATEGORIES = [
     "Beef", "Breakfast", "Chicken", "Dessert", "Goat", "Lamb", 
     "Miscellaneous", "Pasta", "Pork", "Seafood", "Side", "Starter", 
     "Vegan", "Vegetarian"
 ]
 
-# 可用的地区/菜系
+# Available areas/cuisines
 RECIPE_AREAS = [
     "American", "British", "Canadian", "Chinese", "Croatian", "Dutch", 
     "Egyptian", "French", "Greek", "Indian", "Irish", "Italian", 
@@ -66,18 +68,18 @@ RECIPE_AREAS = [
 
 
 def extract_ingredients_and_measures(meal_data: Dict) -> tuple[List[str], List[str]]:
-    """从meal数据中提取成分和份量"""
+    """Extract ingredients and measures from meal data"""
     ingredients = []
     measures = []
     
-    for i in range(1, 21):  # TheMealDB最多支持20个成分
+    for i in range(1, 21):  # TheMealDB supports up to 20 ingredients
         ingredient_key = f"strIngredient{i}"
         measure_key = f"strMeasure{i}"
         
         ingredient_raw = meal_data.get(ingredient_key, "")
         measure_raw = meal_data.get(measure_key, "")
         
-        # 安全地处理可能为None的值
+        # Safely handle potentially None values
         ingredient = ingredient_raw.strip() if ingredient_raw else ""
         measure = measure_raw.strip() if measure_raw else ""
         
@@ -89,7 +91,7 @@ def extract_ingredients_and_measures(meal_data: Dict) -> tuple[List[str], List[s
 
 
 def recipe_from_dict(meal_data: Dict) -> Recipe:
-    """从API响应字典创建Recipe对象"""
+    """Create Recipe object from API response dictionary"""
     ingredients, measures = extract_ingredients_and_measures(meal_data)
     
     return Recipe(
@@ -107,7 +109,7 @@ def recipe_from_dict(meal_data: Dict) -> Recipe:
 
 
 def recipe_list_item_from_dict(meal_data: Dict) -> RecipeListItem:
-    """从API响应字典创建RecipeListItem对象"""
+    """Create RecipeListItem object from API response dictionary"""
     return RecipeListItem(
         id=meal_data["idMeal"],
         name=meal_data["strMeal"],
@@ -116,7 +118,7 @@ def recipe_list_item_from_dict(meal_data: Dict) -> RecipeListItem:
 
 
 def recipe_search_response_from_dict(data: Dict) -> RecipeSearchResponse:
-    """从API响应字典创建RecipeSearchResponse对象"""
+    """Create RecipeSearchResponse object from API response dictionary"""
     meals = None
     if data.get("meals"):
         meals = [recipe_from_dict(meal_data) for meal_data in data["meals"]]
@@ -125,7 +127,7 @@ def recipe_search_response_from_dict(data: Dict) -> RecipeSearchResponse:
 
 
 def recipe_list_response_from_dict(data: Dict) -> RecipeListResponse:
-    """从API响应字典创建RecipeListResponse对象"""
+    """Create RecipeListResponse object from API response dictionary"""
     meals = None
     if data.get("meals"):
         meals = [recipe_list_item_from_dict(meal_data) for meal_data in data["meals"]]
@@ -134,36 +136,36 @@ def recipe_list_response_from_dict(data: Dict) -> RecipeListResponse:
 
 
 def format_recipe_summary(recipe: Recipe) -> str:
-    """格式化食谱摘要"""
+    """Format recipe summary"""
     summary = f"""
-食谱名称: {recipe.name}
-分类: {recipe.category}
-地区: {recipe.area}
+Recipe Name: {recipe.name}
+Category: {recipe.category}
+Area: {recipe.area}
     """.strip()
     
     if recipe.tags:
-        summary += f"\n标签: {recipe.tags}"
+        summary += f"\nTags: {recipe.tags}"
     
     if recipe.ingredients:
-        summary += f"\n成分数量: {len(recipe.ingredients)}个"
+        summary += f"\nIngredients: {len(recipe.ingredients)} items"
     
     return summary
 
 
 def format_recipe_details(recipe: Recipe) -> str:
-    """格式化食谱详细信息"""
+    """Format recipe detailed information"""
     details = format_recipe_summary(recipe)
     
     if recipe.ingredients and recipe.measures:
-        details += "\n\n成分列表:"
+        details += "\n\nIngredients List:"
         for ingredient, measure in zip(recipe.ingredients, recipe.measures):
             measure_text = f" - {measure}" if measure else ""
             details += f"\n• {ingredient}{measure_text}"
     
     if recipe.instructions:
-        details += f"\n\n制作步骤:\n{recipe.instructions}"
+        details += f"\n\nInstructions:\n{recipe.instructions}"
     
     if recipe.youtube_url:
-        details += f"\n\n视频教程: {recipe.youtube_url}"
+        details += f"\n\nVideo Tutorial: {recipe.youtube_url}"
     
     return details 

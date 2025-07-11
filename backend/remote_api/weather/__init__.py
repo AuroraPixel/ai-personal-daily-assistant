@@ -1,5 +1,7 @@
 """
-Weather API模块
+Weather API Module
+
+Author: Andrew Wang
 """
 
 from .client import WeatherClient

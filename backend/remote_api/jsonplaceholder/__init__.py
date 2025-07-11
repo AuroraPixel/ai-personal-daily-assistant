@@ -1,5 +1,7 @@
 """
-JSONPlaceholder API模块
+JSONPlaceholder API Module
+
+Author: Andrew Wang
 """
 
 from .client import JSONPlaceholderClient

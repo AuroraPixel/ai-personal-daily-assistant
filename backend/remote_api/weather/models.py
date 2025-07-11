@@ -1,5 +1,7 @@
 """
-天气API数据模型
+Weather API Data Models
+
+Author: Andrew Wang
 """
 
 from dataclasses import dataclass
@@ -8,7 +10,7 @@ from typing import Optional, List
 
 @dataclass
 class WeatherRequest:
-    """天气API请求参数"""
+    """Weather API request parameters"""
     latitude: float
     longitude: float
     current_weather: bool = True
@@ -19,7 +21,7 @@ class WeatherRequest:
 
 @dataclass
 class CurrentWeather:
-    """当前天气数据"""
+    """Current weather data"""
     temperature: float
     windspeed: float
     winddirection: int
@@ -30,7 +32,7 @@ class CurrentWeather:
 
 @dataclass
 class DailyWeather:
-    """每日天气数据"""
+    """Daily weather data"""
     time: List[str]
     temperature_2m_max: Optional[List[float]] = None
     temperature_2m_min: Optional[List[float]] = None
@@ -42,7 +44,7 @@ class DailyWeather:
 
 @dataclass
 class HourlyWeather:
-    """每小时天气数据"""
+    """Hourly weather data"""
     time: List[str]
     temperature_2m: Optional[List[float]] = None
     precipitation: Optional[List[float]] = None
@@ -52,7 +54,7 @@ class HourlyWeather:
 
 @dataclass
 class WeatherResponse:
-    """天气API响应数据"""
+    """Weather API response data"""
     latitude: float
     longitude: float
     generationtime_ms: float
@@ -65,36 +67,36 @@ class WeatherResponse:
     hourly: Optional[HourlyWeather] = None
 
 
-# 天气代码映射
+# Weather code mapping
 WEATHER_CODE_MAP = {
-    0: "晴朗",
-    1: "主要晴朗",
-    2: "部分多云",
-    3: "阴天",
-    45: "雾",
-    48: "沉积雾霾",
-    51: "小雨",
-    53: "中雨",
-    55: "大雨",
-    61: "小雨",
-    63: "中雨",
-    65: "大雨",
-    71: "小雪",
-    73: "中雪",
-    75: "大雪",
-    95: "雷暴",
-    96: "轻雷暴伴冰雹",
-    99: "重雷暴伴冰雹"
+    0: "Clear sky",
+    1: "Mainly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Depositing rime fog",
+    51: "Light drizzle",
+    53: "Moderate drizzle",
+    55: "Dense drizzle",
+    61: "Slight rain",
+    63: "Moderate rain",
+    65: "Heavy rain",
+    71: "Slight snow fall",
+    73: "Moderate snow fall",
+    75: "Heavy snow fall",
+    95: "Thunderstorm",
+    96: "Thunderstorm with slight hail",
+    99: "Thunderstorm with heavy hail"
 }
 
 
 def get_weather_description(weather_code: int) -> str:
-    """根据天气代码获取天气描述"""
-    return WEATHER_CODE_MAP.get(weather_code, "未知天气")
+    """Get weather description based on weather code"""
+    return WEATHER_CODE_MAP.get(weather_code, "Unknown weather")
 
 
 def weather_response_from_dict(data: dict) -> WeatherResponse:
-    """从API响应字典创建WeatherResponse对象"""
+    """Create WeatherResponse object from API response dictionary"""
     current_weather = None
     if "current_weather" in data:
         cw_data = data["current_weather"]

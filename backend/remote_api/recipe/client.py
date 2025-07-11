@@ -1,5 +1,7 @@
 """
-食谱API客户端
+Recipe API Client
+
+Author: Andrew Wang
 """
 
 from typing import Optional, List
@@ -13,20 +15,20 @@ from .models import (
 
 
 class RecipeClient:
-    """TheMealDB食谱API客户端"""
+    """TheMealDB Recipe API Client"""
     
     def __init__(self):
         self.client = APIClient("https://www.themealdb.com/api/json/v1/1")
     
     def search_by_name(self, name: str) -> Optional[RecipeSearchResponse]:
         """
-        按名称搜索食谱
+        Search recipes by name
         
         Args:
-            name: 食谱名称
+            name: Recipe name
             
         Returns:
-            食谱搜索响应或None
+            Recipe search response or None
         """
         params = {"s": name}
         data = self.client.get("/search.php", params=params)
@@ -37,13 +39,13 @@ class RecipeClient:
     
     def search_by_ingredient(self, ingredient: str) -> Optional[RecipeListResponse]:
         """
-        按主要成分搜索食谱
+        Search recipes by main ingredient
         
         Args:
-            ingredient: 成分名称
+            ingredient: Ingredient name
             
         Returns:
-            食谱列表响应或None
+            Recipe list response or None
         """
         params = {"i": ingredient}
         data = self.client.get("/filter.php", params=params)
@@ -54,16 +56,16 @@ class RecipeClient:
     
     def search_by_category(self, category: str) -> Optional[RecipeListResponse]:
         """
-        按分类搜索食谱
+        Search recipes by category
         
         Args:
-            category: 分类名称
+            category: Category name
             
         Returns:
-            食谱列表响应或None
+            Recipe list response or None
         """
         if category not in RECIPE_CATEGORIES:
-            print(f"无效分类: {category}. 可用分类: {RECIPE_CATEGORIES}")
+            print(f"Invalid category: {category}. Available categories: {RECIPE_CATEGORIES}")
             return None
         
         params = {"c": category}
@@ -75,16 +77,16 @@ class RecipeClient:
     
     def search_by_area(self, area: str) -> Optional[RecipeListResponse]:
         """
-        按地区/菜系搜索食谱
+        Search recipes by area/cuisine
         
         Args:
-            area: 地区/菜系名称
+            area: Area/cuisine name
             
         Returns:
-            食谱列表响应或None
+            Recipe list response or None
         """
         if area not in RECIPE_AREAS:
-            print(f"无效地区: {area}. 可用地区: {RECIPE_AREAS}")
+            print(f"Invalid area: {area}. Available areas: {RECIPE_AREAS}")
             return None
         
         params = {"a": area}
@@ -96,13 +98,13 @@ class RecipeClient:
     
     def get_recipe_details(self, meal_id: str) -> Optional[Recipe]:
         """
-        获取食谱详细信息
+        Get recipe detailed information
         
         Args:
-            meal_id: 食谱ID
+            meal_id: Recipe ID
             
         Returns:
-            食谱详细信息或None
+            Recipe details or None
         """
         params = {"i": meal_id}
         data = self.client.get("/lookup.php", params=params)
@@ -114,10 +116,10 @@ class RecipeClient:
     
     def get_random_recipe(self) -> Optional[Recipe]:
         """
-        获取随机食谱
+        Get random recipe
         
         Returns:
-            随机食谱或None
+            Random recipe or None
         """
         data = self.client.get("/random.php")
         
@@ -128,36 +130,36 @@ class RecipeClient:
     
     def get_categories(self) -> Optional[List[str]]:
         """
-        获取可用的食谱分类
+        Get available recipe categories
         
         Returns:
-            分类列表
+            Categories list
         """
         return RECIPE_CATEGORIES.copy()
     
     def get_areas(self) -> Optional[List[str]]:
         """
-        获取可用的地区/菜系
+        Get available areas/cuisines
         
         Returns:
-            地区列表
+            Areas list
         """
         return RECIPE_AREAS.copy()
     
     def format_search_results(self, response: RecipeSearchResponse, 
                              max_results: int = 10) -> str:
         """
-        格式化搜索结果
+        Format search results
         
         Args:
-            response: 搜索响应
-            max_results: 最大显示结果数
+            response: Search response
+            max_results: Maximum number of results to display
             
         Returns:
-            格式化的搜索结果字符串
+            Formatted search results string
         """
         if not response.meals:
-            return "未找到相关食谱"
+            return "No related recipes found"
         
         results = []
         for i, recipe in enumerate(response.meals[:max_results]):
@@ -165,24 +167,24 @@ class RecipeClient:
         
         total_count = len(response.meals)
         if total_count > max_results:
-            results.append(f"\n... 还有 {total_count - max_results} 个结果")
+            results.append(f"\n... {total_count - max_results} more results")
         
         return "\n\n".join(results)
     
     def format_list_results(self, response: RecipeListResponse, 
                            max_results: int = 10) -> str:
         """
-        格式化列表结果
+        Format list results
         
         Args:
-            response: 列表响应
-            max_results: 最大显示结果数
+            response: List response
+            max_results: Maximum number of results to display
             
         Returns:
-            格式化的列表结果字符串
+            Formatted list results string
         """
         if not response.meals:
-            return "未找到相关食谱"
+            return "No related recipes found"
         
         results = []
         for i, recipe in enumerate(response.meals[:max_results]):
@@ -190,48 +192,48 @@ class RecipeClient:
         
         total_count = len(response.meals)
         if total_count > max_results:
-            results.append(f"\n... 还有 {total_count - max_results} 个结果")
+            results.append(f"\n... {total_count - max_results} more results")
         
         return "\n".join(results)
     
     def comprehensive_search(self, query: str, max_results: int = 5) -> str:
         """
-        综合搜索（按名称、成分、分类、地区）
+        Comprehensive search (by name, ingredient, category, area)
         
         Args:
-            query: 搜索关键词
-            max_results: 每个类别的最大结果数
+            query: Search keywords
+            max_results: Maximum results per category
             
         Returns:
-            综合搜索结果字符串
+            Comprehensive search results string
         """
         results = []
         
-        # 按名称搜索
+        # Search by name
         name_results = self.search_by_name(query)
         if name_results and name_results.meals:
-            results.append(f"按名称搜索 '{query}':")
+            results.append(f"Search by name '{query}':")
             results.append(self.format_search_results(name_results, max_results))
         
-        # 按成分搜索
+        # Search by ingredient
         ingredient_results = self.search_by_ingredient(query)
         if ingredient_results and ingredient_results.meals:
-            results.append(f"\n按成分搜索 '{query}':")
+            results.append(f"\nSearch by ingredient '{query}':")
             results.append(self.format_list_results(ingredient_results, max_results))
         
-        # 按分类搜索（如果匹配）
+        # Search by category (if matches)
         query_title = query.title()
         if query_title in RECIPE_CATEGORIES:
             category_results = self.search_by_category(query_title)
             if category_results and category_results.meals:
-                results.append(f"\n按分类搜索 '{query_title}':")
+                results.append(f"\nSearch by category '{query_title}':")
                 results.append(self.format_list_results(category_results, max_results))
         
-        # 按地区搜索（如果匹配）
+        # Search by area (if matches)
         if query_title in RECIPE_AREAS:
             area_results = self.search_by_area(query_title)
             if area_results and area_results.meals:
-                results.append(f"\n按地区搜索 '{query_title}':")
+                results.append(f"\nSearch by area '{query_title}':")
                 results.append(self.format_list_results(area_results, max_results))
         
-        return "\n\n".join(results) if results else f"未找到与 '{query}' 相关的食谱" 
+        return "\n\n".join(results) if results else f"No recipes found related to '{query}'" 

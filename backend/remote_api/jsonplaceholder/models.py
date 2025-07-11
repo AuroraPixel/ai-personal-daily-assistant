@@ -1,5 +1,7 @@
 """
-JSONPlaceholder API数据模型
+JSONPlaceholder API Data Models
+
+Author: Andrew Wang
 """
 
 from dataclasses import dataclass
@@ -8,7 +10,7 @@ from typing import Optional, List, Dict
 
 @dataclass
 class Address:
-    """地址信息"""
+    """Address information"""
     street: str
     suite: str
     city: str
@@ -18,7 +20,7 @@ class Address:
 
 @dataclass
 class Company:
-    """公司信息"""
+    """Company information"""
     name: str
     catchPhrase: str
     bs: str
@@ -26,7 +28,7 @@ class Company:
 
 @dataclass
 class User:
-    """用户信息"""
+    """User information"""
     id: int
     name: str
     username: str
@@ -39,7 +41,7 @@ class User:
 
 @dataclass
 class Post:
-    """帖子信息"""
+    """Post information"""
     id: int
     userId: int
     title: str
@@ -48,7 +50,7 @@ class Post:
 
 @dataclass
 class Comment:
-    """评论信息"""
+    """Comment information"""
     id: int
     postId: int
     name: str
@@ -58,7 +60,7 @@ class Comment:
 
 @dataclass
 class Album:
-    """相册信息"""
+    """Album information"""
     id: int
     userId: int
     title: str
@@ -66,7 +68,7 @@ class Album:
 
 @dataclass
 class Photo:
-    """照片信息"""
+    """Photo information"""
     id: int
     albumId: int
     title: str
@@ -76,7 +78,7 @@ class Photo:
 
 @dataclass
 class Todo:
-    """待办事项信息"""
+    """Todo item information"""
     id: int
     userId: int
     title: str
@@ -84,7 +86,7 @@ class Todo:
 
 
 def address_from_dict(data: Dict) -> Address:
-    """从字典创建Address对象"""
+    """Create Address object from dictionary"""
     return Address(
         street=data["street"],
         suite=data["suite"],
@@ -95,7 +97,7 @@ def address_from_dict(data: Dict) -> Address:
 
 
 def company_from_dict(data: Dict) -> Company:
-    """从字典创建Company对象"""
+    """Create Company object from dictionary"""
     return Company(
         name=data["name"],
         catchPhrase=data["catchPhrase"],
@@ -104,7 +106,7 @@ def company_from_dict(data: Dict) -> Company:
 
 
 def user_from_dict(data: Dict) -> User:
-    """从字典创建User对象"""
+    """Create User object from dictionary"""
     return User(
         id=data["id"],
         name=data["name"],
@@ -118,7 +120,7 @@ def user_from_dict(data: Dict) -> User:
 
 
 def post_from_dict(data: Dict) -> Post:
-    """从字典创建Post对象"""
+    """Create Post object from dictionary"""
     return Post(
         id=data["id"],
         userId=data["userId"],
@@ -128,7 +130,7 @@ def post_from_dict(data: Dict) -> Post:
 
 
 def comment_from_dict(data: Dict) -> Comment:
-    """从字典创建Comment对象"""
+    """Create Comment object from dictionary"""
     return Comment(
         id=data["id"],
         postId=data["postId"],
@@ -139,7 +141,7 @@ def comment_from_dict(data: Dict) -> Comment:
 
 
 def album_from_dict(data: Dict) -> Album:
-    """从字典创建Album对象"""
+    """Create Album object from dictionary"""
     return Album(
         id=data["id"],
         userId=data["userId"],
@@ -148,7 +150,7 @@ def album_from_dict(data: Dict) -> Album:
 
 
 def photo_from_dict(data: Dict) -> Photo:
-    """从字典创建Photo对象"""
+    """Create Photo object from dictionary"""
     return Photo(
         id=data["id"],
         albumId=data["albumId"],
@@ -159,7 +161,7 @@ def photo_from_dict(data: Dict) -> Photo:
 
 
 def todo_from_dict(data: Dict) -> Todo:
-    """从字典创建Todo对象"""
+    """Create Todo object from dictionary"""
     return Todo(
         id=data["id"],
         userId=data["userId"],
@@ -169,102 +171,102 @@ def todo_from_dict(data: Dict) -> Todo:
 
 
 def format_user(user: User) -> str:
-    """格式化用户信息"""
+    """Format user information"""
     return f"""
-用户信息:
+User Information:
 ID: {user.id}
-姓名: {user.name} ({user.username})
-邮箱: {user.email}
-电话: {user.phone}
-网站: {user.website}
-地址: {user.address.street} {user.address.suite}, {user.address.city} {user.address.zipcode}
-公司: {user.company.name} - {user.company.catchPhrase}
+Name: {user.name} ({user.username})
+Email: {user.email}
+Phone: {user.phone}
+Website: {user.website}
+Address: {user.address.street} {user.address.suite}, {user.address.city} {user.address.zipcode}
+Company: {user.company.name} - {user.company.catchPhrase}
     """.strip()
 
 
 def format_post(post: Post) -> str:
-    """格式化帖子信息"""
+    """Format post information"""
     return f"""
-帖子信息:
+Post Information:
 ID: {post.id}
-用户ID: {post.userId}
-标题: {post.title}
-内容: {post.body}
+User ID: {post.userId}
+Title: {post.title}
+Content: {post.body}
     """.strip()
 
 
 def format_comment(comment: Comment) -> str:
-    """格式化评论信息"""
+    """Format comment information"""
     return f"""
-评论信息:
+Comment Information:
 ID: {comment.id}
-帖子ID: {comment.postId}
-姓名: {comment.name}
-邮箱: {comment.email}
-内容: {comment.body}
+Post ID: {comment.postId}
+Name: {comment.name}
+Email: {comment.email}
+Content: {comment.body}
     """.strip()
 
 
 def format_album(album: Album) -> str:
-    """格式化相册信息"""
+    """Format album information"""
     return f"""
-相册信息:
+Album Information:
 ID: {album.id}
-用户ID: {album.userId}
-标题: {album.title}
+User ID: {album.userId}
+Title: {album.title}
     """.strip()
 
 
 def format_photo(photo: Photo) -> str:
-    """格式化照片信息"""
+    """Format photo information"""
     return f"""
-照片信息:
+Photo Information:
 ID: {photo.id}
-相册ID: {photo.albumId}
-标题: {photo.title}
+Album ID: {photo.albumId}
+Title: {photo.title}
 URL: {photo.url}
-缩略图: {photo.thumbnailUrl}
+Thumbnail: {photo.thumbnailUrl}
     """.strip()
 
 
 def format_todo(todo: Todo) -> str:
-    """格式化待办事项信息"""
-    status = "已完成" if todo.completed else "未完成"
+    """Format todo item information"""
+    status = "Completed" if todo.completed else "Pending"
     return f"""
-待办事项:
+Todo Item:
 ID: {todo.id}
-用户ID: {todo.userId}
-标题: {todo.title}
-状态: {status}
+User ID: {todo.userId}
+Title: {todo.title}
+Status: {status}
     """.strip()
 
 
 def format_user_summary(user: User) -> str:
-    """格式化用户摘要"""
+    """Format user summary"""
     return f"{user.name} ({user.username}) - {user.email}"
 
 
 def format_post_summary(post: Post) -> str:
-    """格式化帖子摘要"""
-    return f"[{post.id}] {post.title} (用户: {post.userId})"
+    """Format post summary"""
+    return f"[{post.id}] {post.title} (User: {post.userId})"
 
 
 def format_comment_summary(comment: Comment) -> str:
-    """格式化评论摘要"""
+    """Format comment summary"""
     return f"[{comment.id}] {comment.name} - {comment.email}"
 
 
 def format_album_summary(album: Album) -> str:
-    """格式化相册摘要"""
-    return f"[{album.id}] {album.title} (用户: {album.userId})"
+    """Format album summary"""
+    return f"[{album.id}] {album.title} (User: {album.userId})"
 
 
 def format_photo_summary(photo: Photo) -> str:
-    """格式化照片摘要"""
-    return f"[{photo.id}] {photo.title} (相册: {photo.albumId})"
+    """Format photo summary"""
+    return f"[{photo.id}] {photo.title} (Album: {photo.albumId})"
 
 
 def format_todo_summary(todo: Todo) -> str:
-    """格式化待办事项摘要"""
+    """Format todo item summary"""
     status = "✓" if todo.completed else "○"
-    return f"[{todo.id}] {status} {todo.title} (用户: {todo.userId})" 
+    return f"[{todo.id}] {status} {todo.title} (User: {todo.userId})" 

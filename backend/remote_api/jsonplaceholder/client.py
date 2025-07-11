@@ -1,5 +1,7 @@
 """
-JSONPlaceholder API客户端
+JSONPlaceholder API Client
+
+Author: Andrew Wang
 """
 
 from typing import Optional, List
@@ -15,29 +17,29 @@ from .models import (
 
 
 class JSONPlaceholderClient:
-    """JSONPlaceholder API客户端"""
+    """JSONPlaceholder API Client"""
     
     def __init__(self):
         self.client = APIClient("https://jsonplaceholder.typicode.com")
     
-    # 用户相关方法
+    # User related methods
     def get_users(self) -> Optional[List[User]]:
-        """获取所有用户"""
+        """Get all users"""
         data = self.client.get("/users")
         if data:
             return [user_from_dict(user_data) for user_data in data]
         return None
     
     def get_user(self, user_id: int) -> Optional[User]:
-        """获取指定用户"""
+        """Get specified user"""
         data = self.client.get(f"/users/{user_id}")
         if data:
             return user_from_dict(data)
         return None
     
-    # 帖子相关方法
+    # Post related methods
     def get_posts(self, user_id: Optional[int] = None) -> Optional[List[Post]]:
-        """获取帖子列表"""
+        """Get post list"""
         endpoint = "/posts"
         params = {}
         if user_id:
@@ -49,19 +51,19 @@ class JSONPlaceholderClient:
         return None
     
     def get_post(self, post_id: int) -> Optional[Post]:
-        """获取指定帖子"""
+        """Get specified post"""
         data = self.client.get(f"/posts/{post_id}")
         if data:
             return post_from_dict(data)
         return None
     
     def get_user_posts(self, user_id: int) -> Optional[List[Post]]:
-        """获取用户的帖子"""
+        """Get user's posts"""
         return self.get_posts(user_id=user_id)
     
-    # 评论相关方法
+    # Comment related methods
     def get_comments(self, post_id: Optional[int] = None) -> Optional[List[Comment]]:
-        """获取评论列表"""
+        """Get comment list"""
         endpoint = "/comments"
         params = {}
         if post_id:
@@ -73,19 +75,19 @@ class JSONPlaceholderClient:
         return None
     
     def get_comment(self, comment_id: int) -> Optional[Comment]:
-        """获取指定评论"""
+        """Get specified comment"""
         data = self.client.get(f"/comments/{comment_id}")
         if data:
             return comment_from_dict(data)
         return None
     
     def get_post_comments(self, post_id: int) -> Optional[List[Comment]]:
-        """获取帖子的评论"""
+        """Get post's comments"""
         return self.get_comments(post_id=post_id)
     
-    # 相册相关方法
+    # Album related methods
     def get_albums(self, user_id: Optional[int] = None) -> Optional[List[Album]]:
-        """获取相册列表"""
+        """Get album list"""
         endpoint = "/albums"
         params = {}
         if user_id:
@@ -97,19 +99,19 @@ class JSONPlaceholderClient:
         return None
     
     def get_album(self, album_id: int) -> Optional[Album]:
-        """获取指定相册"""
+        """Get specified album"""
         data = self.client.get(f"/albums/{album_id}")
         if data:
             return album_from_dict(data)
         return None
     
     def get_user_albums(self, user_id: int) -> Optional[List[Album]]:
-        """获取用户的相册"""
+        """Get user's albums"""
         return self.get_albums(user_id=user_id)
     
-    # 照片相关方法
+    # Photo related methods
     def get_photos(self, album_id: Optional[int] = None) -> Optional[List[Photo]]:
-        """获取照片列表"""
+        """Get photo list"""
         endpoint = "/photos"
         params = {}
         if album_id:
@@ -121,19 +123,19 @@ class JSONPlaceholderClient:
         return None
     
     def get_photo(self, photo_id: int) -> Optional[Photo]:
-        """获取指定照片"""
+        """Get specified photo"""
         data = self.client.get(f"/photos/{photo_id}")
         if data:
             return photo_from_dict(data)
         return None
     
     def get_album_photos(self, album_id: int) -> Optional[List[Photo]]:
-        """获取相册的照片"""
+        """Get album's photos"""
         return self.get_photos(album_id=album_id)
     
-    # 待办事项相关方法
+    # Todo related methods
     def get_todos(self, user_id: Optional[int] = None) -> Optional[List[Todo]]:
-        """获取待办事项列表"""
+        """Get todo list"""
         endpoint = "/todos"
         params = {}
         if user_id:
@@ -145,158 +147,158 @@ class JSONPlaceholderClient:
         return None
     
     def get_todo(self, todo_id: int) -> Optional[Todo]:
-        """获取指定待办事项"""
+        """Get specified todo"""
         data = self.client.get(f"/todos/{todo_id}")
         if data:
             return todo_from_dict(data)
         return None
     
     def get_user_todos(self, user_id: int) -> Optional[List[Todo]]:
-        """获取用户的待办事项"""
+        """Get user's todos"""
         return self.get_todos(user_id=user_id)
     
     def get_completed_todos(self, user_id: Optional[int] = None) -> Optional[List[Todo]]:
-        """获取已完成的待办事项"""
+        """Get completed todos"""
         todos = self.get_todos(user_id=user_id)
         if todos:
             return [todo for todo in todos if todo.completed]
         return None
     
     def get_pending_todos(self, user_id: Optional[int] = None) -> Optional[List[Todo]]:
-        """获取未完成的待办事项"""
+        """Get pending todos"""
         todos = self.get_todos(user_id=user_id)
         if todos:
             return [todo for todo in todos if not todo.completed]
         return None
     
-    # 格式化方法
+    # Format methods
     def format_users_list(self, users: List[User], max_items: int = 10) -> str:
-        """格式化用户列表"""
+        """Format user list"""
         if not users:
-            return "没有找到用户"
+            return "No users found"
         
         formatted = []
         for i, user in enumerate(users[:max_items]):
             formatted.append(f"{i+1}. {format_user_summary(user)}")
         
         if len(users) > max_items:
-            formatted.append(f"... 还有 {len(users) - max_items} 个用户")
+            formatted.append(f"... {len(users) - max_items} more users")
         
         return "\n".join(formatted)
     
     def format_posts_list(self, posts: List[Post], max_items: int = 10) -> str:
-        """格式化帖子列表"""
+        """Format post list"""
         if not posts:
-            return "没有找到帖子"
+            return "No posts found"
         
         formatted = []
         for i, post in enumerate(posts[:max_items]):
             formatted.append(f"{i+1}. {format_post_summary(post)}")
         
         if len(posts) > max_items:
-            formatted.append(f"... 还有 {len(posts) - max_items} 个帖子")
+            formatted.append(f"... {len(posts) - max_items} more posts")
         
         return "\n".join(formatted)
     
     def format_comments_list(self, comments: List[Comment], max_items: int = 10) -> str:
-        """格式化评论列表"""
+        """Format comment list"""
         if not comments:
-            return "没有找到评论"
+            return "No comments found"
         
         formatted = []
         for i, comment in enumerate(comments[:max_items]):
             formatted.append(f"{i+1}. {format_comment_summary(comment)}")
         
         if len(comments) > max_items:
-            formatted.append(f"... 还有 {len(comments) - max_items} 个评论")
+            formatted.append(f"... {len(comments) - max_items} more comments")
         
         return "\n".join(formatted)
     
     def format_albums_list(self, albums: List[Album], max_items: int = 10) -> str:
-        """格式化相册列表"""
+        """Format album list"""
         if not albums:
-            return "没有找到相册"
+            return "No albums found"
         
         formatted = []
         for i, album in enumerate(albums[:max_items]):
             formatted.append(f"{i+1}. {format_album_summary(album)}")
         
         if len(albums) > max_items:
-            formatted.append(f"... 还有 {len(albums) - max_items} 个相册")
+            formatted.append(f"... {len(albums) - max_items} more albums")
         
         return "\n".join(formatted)
     
     def format_photos_list(self, photos: List[Photo], max_items: int = 10) -> str:
-        """格式化照片列表"""
+        """Format photo list"""
         if not photos:
-            return "没有找到照片"
+            return "No photos found"
         
         formatted = []
         for i, photo in enumerate(photos[:max_items]):
             formatted.append(f"{i+1}. {format_photo_summary(photo)}")
         
         if len(photos) > max_items:
-            formatted.append(f"... 还有 {len(photos) - max_items} 张照片")
+            formatted.append(f"... {len(photos) - max_items} more photos")
         
         return "\n".join(formatted)
     
     def format_todos_list(self, todos: List[Todo], max_items: int = 10) -> str:
-        """格式化待办事项列表"""
+        """Format todo list"""
         if not todos:
-            return "没有找到待办事项"
+            return "No todos found"
         
         formatted = []
         for i, todo in enumerate(todos[:max_items]):
             formatted.append(f"{i+1}. {format_todo_summary(todo)}")
         
         if len(todos) > max_items:
-            formatted.append(f"... 还有 {len(todos) - max_items} 个待办事项")
+            formatted.append(f"... {len(todos) - max_items} more todos")
         
         return "\n".join(formatted)
     
-    # 综合查询方法
+    # Comprehensive query methods
     def get_user_summary(self, user_id: int) -> str:
-        """获取用户的完整摘要"""
+        """Get user's complete summary"""
         user = self.get_user(user_id)
         if not user:
-            return f"未找到用户 {user_id}"
+            return f"User {user_id} not found"
         
         summary = [format_user(user)]
         
-        # 获取用户的帖子
+        # Get user's posts
         posts = self.get_user_posts(user_id)
         if posts:
-            summary.append(f"\n帖子数量: {len(posts)}")
+            summary.append(f"\nPosts: {len(posts)}")
             summary.append(self.format_posts_list(posts, max_items=3))
         
-        # 获取用户的相册
+        # Get user's albums
         albums = self.get_user_albums(user_id)
         if albums:
-            summary.append(f"\n相册数量: {len(albums)}")
+            summary.append(f"\nAlbums: {len(albums)}")
             summary.append(self.format_albums_list(albums, max_items=3))
         
-        # 获取用户的待办事项
+        # Get user's todos
         todos = self.get_user_todos(user_id)
         if todos:
             completed_count = len([t for t in todos if t.completed])
             pending_count = len([t for t in todos if not t.completed])
-            summary.append(f"\n待办事项: {completed_count} 已完成, {pending_count} 未完成")
+            summary.append(f"\nTodos: {completed_count} completed, {pending_count} pending")
             summary.append(self.format_todos_list(todos, max_items=5))
         
         return "\n".join(summary)
     
     def get_post_details(self, post_id: int) -> str:
-        """获取帖子的详细信息"""
+        """Get post's detailed information"""
         post = self.get_post(post_id)
         if not post:
-            return f"未找到帖子 {post_id}"
+            return f"Post {post_id} not found"
         
         details = [format_post(post)]
         
-        # 获取帖子的评论
+        # Get post's comments
         comments = self.get_post_comments(post_id)
         if comments:
-            details.append(f"\n评论数量: {len(comments)}")
+            details.append(f"\nComments: {len(comments)}")
             details.append(self.format_comments_list(comments, max_items=5))
         
         return "\n".join(details) 

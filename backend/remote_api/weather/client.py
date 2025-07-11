@@ -1,5 +1,7 @@
 """
-天气API客户端
+Weather API Client
+
+Author: Andrew Wang
 """
 
 from typing import Optional, List
@@ -8,21 +10,21 @@ from .models import WeatherRequest, WeatherResponse, weather_response_from_dict,
 
 
 class WeatherClient:
-    """Open-Meteo天气API客户端"""
+    """Open-Meteo Weather API Client"""
     
     def __init__(self):
         self.client = APIClient("https://api.open-meteo.com/v1")
     
     def get_current_weather(self, latitude: float, longitude: float) -> Optional[WeatherResponse]:
         """
-        获取当前天气
+        Get current weather
         
         Args:
-            latitude: 纬度
-            longitude: 经度
+            latitude: Latitude
+            longitude: Longitude
             
         Returns:
-            天气响应数据或None
+            Weather response data or None
         """
         params = {
             "latitude": latitude,
@@ -40,17 +42,17 @@ class WeatherClient:
                            daily_vars: Optional[List[str]] = None,
                            hourly_vars: Optional[List[str]] = None) -> Optional[WeatherResponse]:
         """
-        获取天气预报
+        Get weather forecast
         
         Args:
-            latitude: 纬度
-            longitude: 经度
-            forecast_days: 预报天数
-            daily_vars: 每日变量列表
-            hourly_vars: 每小时变量列表
+            latitude: Latitude
+            longitude: Longitude
+            forecast_days: Number of forecast days
+            daily_vars: List of daily variables
+            hourly_vars: List of hourly variables
             
         Returns:
-            天气响应数据或None
+            Weather response data or None
         """
         params = {
             "latitude": latitude,
@@ -72,15 +74,15 @@ class WeatherClient:
     def get_daily_forecast(self, latitude: float, longitude: float, 
                           forecast_days: int = 7) -> Optional[WeatherResponse]:
         """
-        获取每日天气预报
+        Get daily weather forecast
         
         Args:
-            latitude: 纬度
-            longitude: 经度
-            forecast_days: 预报天数
+            latitude: Latitude
+            longitude: Longitude
+            forecast_days: Number of forecast days
             
         Returns:
-            天气响应数据或None
+            Weather response data or None
         """
         daily_vars = [
             "temperature_2m_max",
@@ -101,15 +103,15 @@ class WeatherClient:
     def get_hourly_forecast(self, latitude: float, longitude: float, 
                            forecast_days: int = 3) -> Optional[WeatherResponse]:
         """
-        获取每小时天气预报
+        Get hourly weather forecast
         
         Args:
-            latitude: 纬度
-            longitude: 经度
-            forecast_days: 预报天数
+            latitude: Latitude
+            longitude: Longitude
+            forecast_days: Number of forecast days
             
         Returns:
-            天气响应数据或None
+            Weather response data or None
         """
         hourly_vars = [
             "temperature_2m",
@@ -127,64 +129,64 @@ class WeatherClient:
     
     def format_current_weather(self, weather_response: WeatherResponse) -> str:
         """
-        格式化当前天气信息
+        Format current weather information
         
         Args:
-            weather_response: 天气响应数据
+            weather_response: Weather response data
             
         Returns:
-            格式化的天气信息字符串
+            Formatted weather information string
         """
         if not weather_response.current_weather:
-            return "当前天气数据不可用"
+            return "Current weather data unavailable"
         
         current = weather_response.current_weather
         description = get_weather_description(current.weathercode)
-        day_night = "白天" if current.is_day else "夜间"
+        day_night = "Day" if current.is_day else "Night"
         
         return f"""
-当前天气 ({weather_response.timezone}):
-时间: {current.time}
-天气: {description}
-温度: {current.temperature}°C
-风速: {current.windspeed} km/h
-风向: {current.winddirection}°
-时段: {day_night}
-位置: {weather_response.latitude}, {weather_response.longitude}
-海拔: {weather_response.elevation}m
+Current Weather ({weather_response.timezone}):
+Time: {current.time}
+Weather: {description}
+Temperature: {current.temperature}°C
+Wind Speed: {current.windspeed} km/h
+Wind Direction: {current.winddirection}°
+Period: {day_night}
+Location: {weather_response.latitude}, {weather_response.longitude}
+Elevation: {weather_response.elevation}m
         """.strip()
     
     def format_daily_forecast(self, weather_response: WeatherResponse) -> str:
         """
-        格式化每日天气预报
+        Format daily weather forecast
         
         Args:
-            weather_response: 天气响应数据
+            weather_response: Weather response data
             
         Returns:
-            格式化的预报信息字符串
+            Formatted forecast information string
         """
         if not weather_response.daily:
-            return "每日天气预报数据不可用"
+            return "Daily weather forecast data unavailable"
         
         daily = weather_response.daily
-        forecast_lines = [f"每日天气预报 ({weather_response.timezone}):"]
+        forecast_lines = [f"Daily Weather Forecast ({weather_response.timezone}):"]
         
         for i, date in enumerate(daily.time):
-            line = f"日期: {date}"
+            line = f"Date: {date}"
             
             if daily.temperature_2m_max and daily.temperature_2m_min:
-                line += f", 温度: {daily.temperature_2m_min[i]}°C - {daily.temperature_2m_max[i]}°C"
+                line += f", Temperature: {daily.temperature_2m_min[i]}°C - {daily.temperature_2m_max[i]}°C"
             
             if daily.precipitation_sum:
-                line += f", 降水: {daily.precipitation_sum[i]}mm"
+                line += f", Precipitation: {daily.precipitation_sum[i]}mm"
             
             if daily.weathercode:
                 description = get_weather_description(daily.weathercode[i])
-                line += f", 天气: {description}"
+                line += f", Weather: {description}"
             
             if daily.sunrise and daily.sunset:
-                line += f", 日出: {daily.sunrise[i]}, 日落: {daily.sunset[i]}"
+                line += f", Sunrise: {daily.sunrise[i]}, Sunset: {daily.sunset[i]}"
             
             forecast_lines.append(line)
         

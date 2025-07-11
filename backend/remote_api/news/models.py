@@ -1,5 +1,7 @@
 """
-新闻API数据模型
+News API Data Models
+
+Author: Andrew Wang
 """
 
 from dataclasses import dataclass
@@ -9,7 +11,7 @@ from datetime import datetime
 
 @dataclass
 class NewsSearchRequest:
-    """新闻搜索请求参数"""
+    """News search request parameters"""
     query: Optional[str] = None
     locale: str = "us"
     language: str = "en"
@@ -21,7 +23,7 @@ class NewsSearchRequest:
 
 @dataclass
 class NewsArticle:
-    """新闻文章信息"""
+    """News article information"""
     uuid: str
     title: str
     description: str
@@ -39,7 +41,7 @@ class NewsArticle:
 
 @dataclass
 class NewsMetadata:
-    """新闻响应元数据"""
+    """News response metadata"""
     found: int
     returned: int
     limit: int
@@ -48,12 +50,12 @@ class NewsMetadata:
 
 @dataclass
 class NewsResponse:
-    """新闻API响应"""
+    """News API response"""
     meta: NewsMetadata
     data: List[NewsArticle]
 
 
-# 可用的新闻分类
+# Available news categories
 NEWS_CATEGORIES = [
     "general",
     "business",
@@ -64,43 +66,43 @@ NEWS_CATEGORIES = [
     "technology"
 ]
 
-# 可用的地区/语言
+# Available locales/regions
 NEWS_LOCALES = [
-    "us",  # 美国
-    "gb",  # 英国
-    "ca",  # 加拿大
-    "au",  # 澳大利亚
-    "in",  # 印度
-    "jp",  # 日本
-    "kr",  # 韩国
-    "cn",  # 中国
-    "de",  # 德国
-    "fr",  # 法国
-    "es",  # 西班牙
-    "it",  # 意大利
-    "ru",  # 俄罗斯
-    "br",  # 巴西
-    "mx",  # 墨西哥
+    "us",  # United States
+    "gb",  # United Kingdom
+    "ca",  # Canada
+    "au",  # Australia
+    "in",  # India
+    "jp",  # Japan
+    "kr",  # South Korea
+    "cn",  # China
+    "de",  # Germany
+    "fr",  # France
+    "es",  # Spain
+    "it",  # Italy
+    "ru",  # Russia
+    "br",  # Brazil
+    "mx",  # Mexico
 ]
 
-# 可用的语言
+# Available languages
 NEWS_LANGUAGES = [
-    "en",  # 英语
-    "zh",  # 中文
-    "ja",  # 日语
-    "ko",  # 韩语
-    "de",  # 德语
-    "fr",  # 法语
-    "es",  # 西班牙语
-    "it",  # 意大利语
-    "ru",  # 俄语
-    "pt",  # 葡萄牙语
-    "ar",  # 阿拉伯语
+    "en",  # English
+    "zh",  # Chinese
+    "ja",  # Japanese
+    "ko",  # Korean
+    "de",  # German
+    "fr",  # French
+    "es",  # Spanish
+    "it",  # Italian
+    "ru",  # Russian
+    "pt",  # Portuguese
+    "ar",  # Arabic
 ]
 
 
 def news_article_from_dict(data: Dict) -> NewsArticle:
-    """从API响应字典创建NewsArticle对象"""
+    """Create NewsArticle object from API response dictionary"""
     return NewsArticle(
         uuid=data["uuid"],
         title=data["title"],
@@ -119,7 +121,7 @@ def news_article_from_dict(data: Dict) -> NewsArticle:
 
 
 def news_metadata_from_dict(data: Dict) -> NewsMetadata:
-    """从API响应字典创建NewsMetadata对象"""
+    """Create NewsMetadata object from API response dictionary"""
     return NewsMetadata(
         found=data["found"],
         returned=data["returned"],
@@ -129,7 +131,7 @@ def news_metadata_from_dict(data: Dict) -> NewsMetadata:
 
 
 def news_response_from_dict(data: Dict) -> NewsResponse:
-    """从API响应字典创建NewsResponse对象"""
+    """Create NewsResponse object from API response dictionary"""
     meta = news_metadata_from_dict(data["meta"])
     articles = [news_article_from_dict(article_data) for article_data in data["data"]]
     
@@ -137,38 +139,38 @@ def news_response_from_dict(data: Dict) -> NewsResponse:
 
 
 def format_news_article(article: NewsArticle) -> str:
-    """格式化新闻文章"""
+    """Format news article"""
     formatted = f"""
-标题: {article.title}
-来源: {article.source}
-发布时间: {article.published_at}
-语言: {article.language}
-地区: {article.locale}
+Title: {article.title}
+Source: {article.source}
+Published: {article.published_at}
+Language: {article.language}
+Locale: {article.locale}
     """.strip()
     
     if article.description:
-        formatted += f"\n摘要: {article.description}"
+        formatted += f"\nDescription: {article.description}"
     
     if article.keywords:
-        formatted += f"\n关键词: {article.keywords}"
+        formatted += f"\nKeywords: {article.keywords}"
     
     if article.categories:
-        formatted += f"\n分类: {', '.join(article.categories)}"
+        formatted += f"\nCategories: {', '.join(article.categories)}"
     
-    formatted += f"\n链接: {article.url}"
+    formatted += f"\nURL: {article.url}"
     
     return formatted
 
 
 def format_news_summary(article: NewsArticle) -> str:
-    """格式化新闻摘要"""
+    """Format news summary"""
     return f"{article.title} - {article.source} ({article.published_at})"
 
 
 def format_news_list(articles: List[NewsArticle], max_items: int = 10) -> str:
-    """格式化新闻列表"""
+    """Format news list"""
     if not articles:
-        return "没有找到相关新闻"
+        return "No related news found"
     
     formatted_articles = []
     for i, article in enumerate(articles[:max_items]):
@@ -177,42 +179,42 @@ def format_news_list(articles: List[NewsArticle], max_items: int = 10) -> str:
     result = "\n".join(formatted_articles)
     
     if len(articles) > max_items:
-        result += f"\n... 还有 {len(articles) - max_items} 条新闻"
+        result += f"\n... {len(articles) - max_items} more news items"
     
     return result
 
 
 def get_category_display_name(category: str) -> str:
-    """获取分类的中文显示名称"""
+    """Get category display name in English"""
     category_names = {
-        "general": "综合",
-        "business": "商业",
-        "entertainment": "娱乐",
-        "health": "健康",
-        "science": "科学",
-        "sports": "体育",
-        "technology": "科技"
+        "general": "General",
+        "business": "Business",
+        "entertainment": "Entertainment",
+        "health": "Health",
+        "science": "Science",
+        "sports": "Sports",
+        "technology": "Technology"
     }
     return category_names.get(category, category)
 
 
 def get_locale_display_name(locale: str) -> str:
-    """获取地区的中文显示名称"""
+    """Get locale display name in English"""
     locale_names = {
-        "us": "美国",
-        "gb": "英国",
-        "ca": "加拿大",
-        "au": "澳大利亚",
-        "in": "印度",
-        "jp": "日本",
-        "kr": "韩国",
-        "cn": "中国",
-        "de": "德国",
-        "fr": "法国",
-        "es": "西班牙",
-        "it": "意大利",
-        "ru": "俄罗斯",
-        "br": "巴西",
-        "mx": "墨西哥"
+        "us": "United States",
+        "gb": "United Kingdom",
+        "ca": "Canada",
+        "au": "Australia",
+        "in": "India",
+        "jp": "Japan",
+        "kr": "South Korea",
+        "cn": "China",
+        "de": "Germany",
+        "fr": "France",
+        "es": "Spain",
+        "it": "Italy",
+        "ru": "Russia",
+        "br": "Brazil",
+        "mx": "Mexico"
     }
     return locale_names.get(locale, locale) 

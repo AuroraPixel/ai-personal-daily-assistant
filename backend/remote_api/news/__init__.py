@@ -1,5 +1,7 @@
 """
-News API模块
+News API Module
+
+Author: Andrew Wang
 """
 
 from .client import NewsClient
