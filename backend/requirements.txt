@@ -1,3 +1,8 @@
 fastmcp
 requests
 python-dotenv
+fastapi
+uvicorn[standard]
+websockets
+pydantic
+typing-extensions
