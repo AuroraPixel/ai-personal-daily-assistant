@@ -5,11 +5,16 @@ Contains all news-related MCP tools
 Author: Andrew Wang
 """
 
+import json
 from fastmcp import FastMCP
 from remote_api.news import NewsClient
+from remote_api.news.models import (
+    NEWS_CATEGORIES, NEWS_LANGUAGES,
+    get_category_error_message, get_language_error_message
+)
 
 # Initialize news client
-news_client = NewsClient()  
+news_client = NewsClient()
 
 
 def register_news_tools(mcp: FastMCP):
@@ -20,160 +25,128 @@ def register_news_tools(mcp: FastMCP):
         mcp: FastMCP instance
     """
     
-    # Get top headlines
+    # Get news (top headlines or by category)
     @mcp.tool
-    def get_top_headlines(language: str = "en", category: str = "", limit: int = 10) -> str:
+    def get_news(language: str = "en", category: str = "", limit: int = 10) -> str:
         """
-        Get top headlines
-            Args:
-                language: Language code (default English "en")
-                category: News category (optional)
-                limit: Number of news items to return (default 10)
-            Returns:
-                Top headlines list | Error message
+        Get news (top headlines or by category)
+        
+        Args:
+            language: Language code (default "en")
+                     Supported languages: ar (Arabic), bg (Bulgarian), bn (Bengali), cs (Czech), 
+                     da (Danish), de (German), el (Greek), en (English), es (Spanish), et (Estonian), 
+                     fa (Persian), fi (Finnish), fr (French), he (Hebrew), hi (Hindi), hr (Croatian), 
+                     hu (Hungarian), id (Indonesian), it (Italian), ja (Japanese), ko (Korean), 
+                     lt (Lithuanian), multi (Multiple languages), nl (Dutch), no (Norwegian), 
+                     pl (Polish), pt (Portuguese), ro (Romanian), ru (Russian), sk (Slovak), 
+                     sv (Swedish), ta (Tamil), th (Thai), tr (Turkish), uk (Ukrainian), 
+                     vi (Vietnamese), zh (Chinese)
+            category: News category (optional, leave empty for all news)
+                     Supported categories: general, science, sports, business, health, entertainment, 
+                     tech, politics, food, travel
+            limit: Number of news items to return (default 10)
+            
+        Returns:
+            JSON string of NewsApiResponse entity in format:
+            {
+                "meta": {
+                    "found": 2847,
+                    "returned": 10,
+                    "limit": 10,
+                    "page": 1
+                },
+                "data": [
+                    {
+                        "uuid": "3e3e3e3e-3e3e-3e3e-3e3e-3e3e3e3e3e3e",
+                        "title": "Sample News Title",
+                        "description": "Sample news description...",
+                        "url": "https://example.com/news/sample",
+                        "source": "Example News",
+                        "published_at": "2025-01-18T10:30:00Z",
+                        "language": "en",
+                        "locale": "us",
+                        "keywords": "keyword1, keyword2",
+                        "snippet": "Sample snippet...",
+                        "image_url": "https://example.com/image.jpg",
+                        "categories": ["general"],
+                        "relevance_score": 0.95
+                    }
+                ]
+            }
         """
         try:
+            # Get news
             category_param = category if category else None
-            headlines = news_client.get_top_headlines(language, category_param, limit)
-            if headlines:
-                return news_client.format_headlines(headlines)
-            return "Unable to get top headlines"
+            result = news_client.get_news(language, category_param, limit)
+            
+            if result:
+                return json.dumps(result.model_dump(), ensure_ascii=False)
+            return json.dumps({"error": "Unable to get news"}, ensure_ascii=False)
+            
         except Exception as e:
-            return f"Error getting top headlines: {str(e)}"
+            return json.dumps({"error": f"Error getting news: {str(e)}"}, ensure_ascii=False)
 
     # Search news
     @mcp.tool
     def search_news(query: str, language: str = "en", days_back: int = 7, limit: int = 10) -> str:
         """
-        Search news
-            Args:
-                query: Search keywords
-                language: Language code (default English "en")
-                days_back: Number of days to search back (default 7 days)
-                limit: Number of news items to return (default 10)
-            Returns:
-                Found news list | Error message
+        Search news by keywords
+        
+        Args:
+            query: Search keywords (required)
+            language: Language code (default "en")
+                     Supported languages: ar (Arabic), bg (Bulgarian), bn (Bengali), cs (Czech), 
+                     da (Danish), de (German), el (Greek), en (English), es (Spanish), et (Estonian), 
+                     fa (Persian), fi (Finnish), fr (French), he (Hebrew), hi (Hindi), hr (Croatian), 
+                     hu (Hungarian), id (Indonesian), it (Italian), ja (Japanese), ko (Korean), 
+                     lt (Lithuanian), multi (Multiple languages), nl (Dutch), no (Norwegian), 
+                     pl (Polish), pt (Portuguese), ro (Romanian), ru (Russian), sk (Slovak), 
+                     sv (Swedish), ta (Tamil), th (Thai), tr (Turkish), uk (Ukrainian), 
+                     vi (Vietnamese), zh (Chinese)
+            days_back: Number of days to search back (default 7)
+            limit: Number of news items to return (default 10)
+            
+        Returns:
+            JSON string of NewsApiResponse entity in format:
+            {
+                "meta": {
+                    "found": 156,
+                    "returned": 10,
+                    "limit": 10,
+                    "page": 1
+                },
+                "data": [
+                    {
+                        "uuid": "4f4f4f4f-4f4f-4f4f-4f4f-4f4f4f4f4f4f",
+                        "title": "Search Result Title",
+                        "description": "Search result description...",
+                        "url": "https://example.com/news/search-result",
+                        "source": "Example News",
+                        "published_at": "2025-01-18T09:15:00Z",
+                        "language": "en",
+                        "locale": "us",
+                        "keywords": "search, keywords",
+                        "snippet": "Search snippet...",
+                        "image_url": "https://example.com/search-image.jpg",
+                        "categories": ["general", "tech"],
+                        "relevance_score": 0.87
+                    }
+                ]
+            }
         """
         try:
-            search_results = news_client.search_news(query, language, days_back, limit)
-            if search_results:
-                return news_client.format_search_results(search_results, query)
-            return f"No news found about '{query}'"
+            # Validate query
+            if not query.strip():
+                return json.dumps({"error": "Search query cannot be empty"}, ensure_ascii=False)
+            
+            # Search news
+            result = news_client.search_news(query, language, days_back, limit)
+            
+            if result:
+                return json.dumps(result.model_dump(), ensure_ascii=False)
+            return json.dumps({"error": f"No news found about '{query}'"}, ensure_ascii=False)
+            
         except Exception as e:
-            return f"Error searching news: {str(e)}"
-
-    # Get technology news
-    @mcp.tool
-    def get_tech_news(language: str = "en", limit: int = 10) -> str:
-        """
-        Get technology news
-            Args:
-                language: Language code (default English "en")
-                limit: Number of news items to return (default 10)
-            Returns:
-                Technology news list | Error message
-        """
-        try:
-            tech_news = news_client.get_tech_news(language, limit)
-            if tech_news:
-                return news_client.format_category_news(tech_news, "technology")
-            return "Unable to get technology news"
-        except Exception as e:
-            return f"Error getting technology news: {str(e)}"
-
-    # Get business news
-    @mcp.tool
-    def get_business_news(language: str = "en", limit: int = 10) -> str:
-        """
-        Get business news
-            Args:
-                language: Language code (default English "en")
-                limit: Number of news items to return (default 10)
-            Returns:
-                Business news list | Error message
-        """
-        try:
-            business_news = news_client.get_business_news(language, limit)
-            if business_news:
-                return news_client.format_category_news(business_news, "business")
-            return "Unable to get business news"
-        except Exception as e:
-            return f"Error getting business news: {str(e)}"
-
-    # Get sports news
-    @mcp.tool
-    def get_sports_news(language: str = "en", limit: int = 10) -> str:
-        """
-        Get sports news
-            Args:
-                language: Language code (default English "en")
-                limit: Number of news items to return (default 10)
-            Returns:
-                Sports news list | Error message
-        """
-        try:
-            sports_news = news_client.get_sports_news(language, limit)
-            if sports_news:
-                return news_client.format_category_news(sports_news, "sports")
-            return "Unable to get sports news"
-        except Exception as e:
-            return f"Error getting sports news: {str(e)}"
-
-    # Get health news
-    @mcp.tool
-    def get_health_news(language: str = "en", limit: int = 10) -> str:
-        """
-        Get health news
-            Args:
-                language: Language code (default English "en")
-                limit: Number of news items to return (default 10)
-            Returns:
-                Health news list | Error message
-        """
-        try:
-            health_news = news_client.get_health_news(language, limit)
-            if health_news:
-                return news_client.format_category_news(health_news, "health")
-            return "Unable to get health news"
-        except Exception as e:
-            return f"Error getting health news: {str(e)}"
-
-    # Get science news
-    @mcp.tool
-    def get_science_news(language: str = "en", limit: int = 10) -> str:
-        """
-        Get science news
-            Args:
-                language: Language code (default English "en")
-                limit: Number of news items to return (default 10)
-            Returns:
-                Science news list | Error message
-        """
-        try:
-            science_news = news_client.get_science_news(language, limit)
-            if science_news:
-                return news_client.format_category_news(science_news, "science")
-            return "Unable to get science news"
-        except Exception as e:
-            return f"Error getting science news: {str(e)}"
-
-    # Get entertainment news
-    @mcp.tool
-    def get_entertainment_news(language: str = "en", limit: int = 10) -> str:
-        """
-        Get entertainment news
-            Args:
-                language: Language code (default English "en")
-                limit: Number of news items to return (default 10)
-            Returns:
-                Entertainment news list | Error message
-        """
-        try:
-            entertainment_news = news_client.get_entertainment_news(language, limit)
-            if entertainment_news:
-                return news_client.format_category_news(entertainment_news, "entertainment")
-            return "Unable to get entertainment news"
-        except Exception as e:
-            return f"Error getting entertainment news: {str(e)}"
+            return json.dumps({"error": f"Error searching news: {str(e)}"}, ensure_ascii=False)
 
     print("✅ News tools registered")

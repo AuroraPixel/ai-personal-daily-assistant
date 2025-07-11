@@ -4,13 +4,12 @@ News API Data Models
 Author: Andrew Wang
 """
 
-from dataclasses import dataclass
-from typing import Optional, List, Dict
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
-@dataclass
-class NewsSearchRequest:
+class NewsSearchRequest(BaseModel):
     """News search request parameters"""
     query: Optional[str] = None
     locale: str = "us"
@@ -21,121 +20,191 @@ class NewsSearchRequest:
     limit: int = 10
 
 
-@dataclass
-class NewsArticle:
-    """News article information"""
-    uuid: str
-    title: str
-    description: str
-    url: str
-    source: str
-    published_at: str
-    language: str
-    locale: str
-    keywords: Optional[str] = None
-    snippet: Optional[str] = None
-    image_url: Optional[str] = None
-    categories: Optional[List[str]] = None
-    relevance_score: Optional[float] = None
+class NewsArticle(BaseModel):
+    """News article information (single news item)"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
+    uuid: str                                   # Unique article identifier
+    title: str                                  # Article headline title
+    description: str                            # Article description/summary
+    url: str                                    # Article URL link
+    source: str                                 # News source name
+    published_at: str                           # Publication timestamp (ISO8601)
+    language: str                               # Article language code
+    locale: Optional[str] = None                # Article locale/region code (optional)
+    keywords: Optional[str] = None              # Article keywords (comma-separated)
+    snippet: Optional[str] = None               # Article snippet/excerpt
+    image_url: Optional[str] = None             # Article image URL
+    categories: Optional[List[str]] = None      # Article categories list
+    relevance_score: Optional[float] = None     # Search relevance score
 
 
-@dataclass
-class NewsMetadata:
-    """News response metadata"""
-    found: int
-    returned: int
-    limit: int
-    page: int
+class NewsMetadata(BaseModel):
+    """News response metadata (pagination and result info)"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
+    found: int          # Total number of articles found
+    returned: int       # Number of articles returned in this response
+    limit: int          # Maximum number of articles requested
+    page: int           # Current page number
 
 
-@dataclass
-class NewsResponse:
-    """News API response"""
-    meta: NewsMetadata
-    data: List[NewsArticle]
+class NewsApiResponse(BaseModel):
+    """Universal news API response for all endpoints"""
+    model_config = ConfigDict(extra='allow', use_enum_values=True)
+    
+    meta: NewsMetadata              # Response metadata
+    data: List[NewsArticle]         # List of news articles
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "NewsApiResponse":
+        """Create NewsApiResponse from dictionary using Pydantic's automatic mapping"""
+        return cls(**data)
 
 
-# Available news categories
+# Available news categories (as requested by user)
 NEWS_CATEGORIES = [
     "general",
-    "business",
-    "entertainment",
-    "health",
-    "science",
+    "science", 
     "sports",
-    "technology"
+    "business",
+    "health",
+    "entertainment",
+    "tech",
+    "politics",
+    "food",
+    "travel"
 ]
 
-# Available locales/regions
+# Available locale codes (as requested by user)
 NEWS_LOCALES = [
-    "us",  # United States
-    "gb",  # United Kingdom
-    "ca",  # Canada
+    "ar",  # Argentina
+    "am",  # Armenia
     "au",  # Australia
-    "in",  # India
-    "jp",  # Japan
-    "kr",  # South Korea
-    "cn",  # China
-    "de",  # Germany
-    "fr",  # France
-    "es",  # Spain
-    "it",  # Italy
-    "ru",  # Russia
+    "at",  # Austria
+    "by",  # Belarus
+    "be",  # Belgium
+    "bo",  # Bolivia
     "br",  # Brazil
+    "bg",  # Bulgaria
+    "ca",  # Canada
+    "cl",  # Chile
+    "cn",  # China
+    "co",  # Colombia
+    "hr",  # Croatia
+    "cz",  # Czechia
+    "ec",  # Ecuador
+    "eg",  # Egypt
+    "fr",  # France
+    "de",  # Germany
+    "gr",  # Greece
+    "hn",  # Honduras
+    "hk",  # Hong Kong
+    "in",  # India
+    "id",  # Indonesia
+    "ir",  # Iran
+    "ie",  # Ireland
+    "il",  # Israel
+    "it",  # Italy
+    "jp",  # Japan
+    "kr",  # Korea
     "mx",  # Mexico
+    "nl",  # Netherlands
+    "nz",  # New Zealand
+    "ni",  # Nicaragua
+    "pk",  # Pakistan
+    "pa",  # Panama
+    "pe",  # Peru
+    "pl",  # Poland
+    "pt",  # Portugal
+    "qa",  # Qatar
+    "ro",  # Romania
+    "ru",  # Russia
+    "sa",  # Saudi Arabia
+    "za",  # South Africa
+    "es",  # Spain
+    "ch",  # Switzerland
+    "sy",  # Syria
+    "tw",  # Taiwan
+    "th",  # Thailand
+    "tr",  # Turkey
+    "ua",  # Ukraine
+    "gb",  # United Kingdom
+    "us",  # United States Of America
+    "uy",  # Uruguay
+    "ve"   # Venezuela
 ]
 
-# Available languages
+# Available language codes (ISO 639-1 standard)
 NEWS_LANGUAGES = [
-    "en",  # English
-    "zh",  # Chinese
-    "ja",  # Japanese
-    "ko",  # Korean
-    "de",  # German
-    "fr",  # French
-    "es",  # Spanish
-    "it",  # Italian
-    "ru",  # Russian
-    "pt",  # Portuguese
-    "ar",  # Arabic
+    "ar",       # Arabic
+    "bg",       # Bulgarian  
+    "bn",       # Bengali
+    "cs",       # Czech
+    "da",       # Danish
+    "de",       # German
+    "el",       # Greek
+    "en",       # English
+    "es",       # Spanish
+    "et",       # Estonian
+    "fa",       # Persian
+    "fi",       # Finnish
+    "fr",       # French
+    "he",       # Hebrew
+    "hi",       # Hindi
+    "hr",       # Croatian
+    "hu",       # Hungarian
+    "id",       # Indonesian
+    "it",       # Italian
+    "ja",       # Japanese
+    "ko",       # Korean
+    "lt",       # Lithuanian
+    "multi",    # Multiple languages
+    "nl",       # Dutch
+    "no",       # Norwegian
+    "pl",       # Polish
+    "pt",       # Portuguese
+    "ro",       # Romanian
+    "ru",       # Russian
+    "sk",       # Slovak
+    "sv",       # Swedish
+    "ta",       # Tamil
+    "th",       # Thai
+    "tr",       # Turkish
+    "uk",       # Ukrainian
+    "vi",       # Vietnamese
+    "zh"        # Chinese
 ]
 
 
-def news_article_from_dict(data: Dict) -> NewsArticle:
-    """Create NewsArticle object from API response dictionary"""
-    return NewsArticle(
-        uuid=data["uuid"],
-        title=data["title"],
-        description=data["description"],
-        url=data["url"],
-        source=data["source"],
-        published_at=data["published_at"],
-        language=data.get("language", "en"),
-        locale=data.get("locale", "us"),
-        keywords=data.get("keywords"),
-        snippet=data.get("snippet"),
-        image_url=data.get("image_url"),
-        categories=data.get("categories"),
-        relevance_score=data.get("relevance_score")
-    )
+def validate_category(category: str) -> bool:
+    """Validate news category"""
+    return category in NEWS_CATEGORIES
 
 
-def news_metadata_from_dict(data: Dict) -> NewsMetadata:
-    """Create NewsMetadata object from API response dictionary"""
-    return NewsMetadata(
-        found=data["found"],
-        returned=data["returned"],
-        limit=data["limit"],
-        page=data["page"]
-    )
+def validate_language(language: str) -> bool:
+    """Validate language code"""
+    return language in NEWS_LANGUAGES
 
 
-def news_response_from_dict(data: Dict) -> NewsResponse:
-    """Create NewsResponse object from API response dictionary"""
-    meta = news_metadata_from_dict(data["meta"])
-    articles = [news_article_from_dict(article_data) for article_data in data["data"]]
-    
-    return NewsResponse(meta=meta, data=articles)
+def validate_locale(locale: str) -> bool:
+    """Validate locale code"""
+    return locale in NEWS_LOCALES
+
+
+def get_category_error_message() -> str:
+    """Get category validation error message"""
+    return f"Invalid category. Available categories: {', '.join(NEWS_CATEGORIES)}"
+
+
+def get_language_error_message() -> str:
+    """Get language validation error message"""
+    return f"Invalid language code. Available languages: {', '.join(NEWS_LANGUAGES)}"
+
+
+def get_locale_error_message() -> str:
+    """Get locale validation error message"""
+    return f"Invalid locale code. Available locales: {', '.join(NEWS_LOCALES)}"
 
 
 def format_news_article(article: NewsArticle) -> str:
@@ -188,12 +257,15 @@ def get_category_display_name(category: str) -> str:
     """Get category display name in English"""
     category_names = {
         "general": "General",
-        "business": "Business",
-        "entertainment": "Entertainment",
-        "health": "Health",
         "science": "Science",
         "sports": "Sports",
-        "technology": "Technology"
+        "business": "Business",
+        "health": "Health",
+        "entertainment": "Entertainment",
+        "tech": "Technology",
+        "politics": "Politics",
+        "food": "Food & Dining",
+        "travel": "Travel"
     }
     return category_names.get(category, category)
 

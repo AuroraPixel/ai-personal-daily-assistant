@@ -4,15 +4,16 @@ News API Client
 Author: Andrew Wang
 """
 import os
+import json
 from typing import Optional, List
 from datetime import datetime, timedelta
 from core.http_core.client import APIClient
 from .models import (
-    NewsResponse, NewsArticle, NewsSearchRequest,
-    news_response_from_dict, format_news_article,
-    format_news_list, get_category_display_name,
-    get_locale_display_name,
-    NEWS_CATEGORIES, NEWS_LOCALES, NEWS_LANGUAGES
+    NewsApiResponse, NewsArticle, NewsSearchRequest,
+    format_news_article, format_news_list, get_category_display_name,
+    get_locale_display_name, NEWS_CATEGORIES, NEWS_LOCALES, NEWS_LANGUAGES,
+    validate_category, validate_language, validate_locale,
+    get_category_error_message, get_language_error_message, get_locale_error_message
 )
 
 
@@ -39,29 +40,34 @@ class NewsClient:
         if not self.api_token:
             print("Debug: API token not set")
     
-    def get_top_headlines(self, language: str = "en", 
-                         category: Optional[str] = None,
-                         limit: int = 10) -> Optional[NewsResponse]:
+    def get_news(self, language: str = "en", 
+                 category: Optional[str] = None,
+                 limit: int = 10) -> Optional[NewsApiResponse]:
         """
-        Get top headlines
+        Get news (top headlines or by category)
         
         Args:
-            language: Language code
-            category: News category
-            limit: Number of news items to return
+            language: Language code (must be in supported languages list)
+            category: News category (optional, must be in supported categories list)
+            limit: Number of news items to return (default 10)
             
         Returns:
-            News response or None
+            NewsApiResponse or None if request failed
         """
+        # Validate language
+        if not validate_language(language):
+            raise ValueError(get_language_error_message())
+        
+        # Validate category if provided
+        if category and not validate_category(category):
+            raise ValueError(get_category_error_message())
+        
         params = {
             "language": language,
             "limit": limit
         }
         
         if category:
-            if category not in NEWS_CATEGORIES:
-                print(f"Invalid category: {category}. Available categories: {NEWS_CATEGORIES}")
-                return None
             params["categories"] = category
         
         # Add authentication parameters
@@ -70,7 +76,7 @@ class NewsClient:
         data = self.client.get("/news/all", params=params)
         
         if data:
-            return news_response_from_dict(data)
+            return NewsApiResponse.from_dict(data)
         else:
             print("Note: News API request failed. Please check if API key is correct.")
             return None
@@ -78,19 +84,23 @@ class NewsClient:
     def search_news(self, query: str, 
                    language: str = "en",
                    days_back: int = 7,
-                   limit: int = 10) -> Optional[NewsResponse]:
+                   limit: int = 10) -> Optional[NewsApiResponse]:
         """
         Search news
         
         Args:
             query: Search keywords
-            language: Language code
-            days_back: Number of days to search back
-            limit: Number of news items to return
+            language: Language code (must be in supported languages list)
+            days_back: Number of days to search back (default 7)
+            limit: Number of news items to return (default 10)
             
         Returns:
-            News response or None
+            NewsApiResponse or None if request failed
         """
+        # Validate language
+        if not validate_language(language):
+            raise ValueError(get_language_error_message())
+        
         # Calculate date range
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
@@ -109,58 +119,10 @@ class NewsClient:
         data = self.client.get("/news/all", params=params)
         
         if data:
-            return news_response_from_dict(data)
+            return NewsApiResponse.from_dict(data)
         else:
             print("Note: News search request failed. Please check if API key is correct.")
             return None
-    
-    def get_category_news(self, category: str, 
-                         language: str = "en",
-                         limit: int = 10) -> Optional[NewsResponse]:
-        """
-        Get category news
-        
-        Args:
-            category: News category
-            language: Language code
-            limit: Number of news items to return
-            
-        Returns:
-            News response or None
-        """
-        if category not in NEWS_CATEGORIES:
-            print(f"Invalid category: {category}. Available categories: {NEWS_CATEGORIES}")
-            return None
-        
-        return self.get_top_headlines(language=language, category=category, limit=limit)
-    
-    def get_tech_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """Get technology news"""
-        return self.get_category_news("technology", language, limit)
-    
-    def get_business_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """Get business news"""
-        return self.get_category_news("business", language, limit)
-    
-    def get_sports_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """Get sports news"""
-        return self.get_category_news("sports", language, limit)
-    
-    def get_health_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """Get health news"""
-        return self.get_category_news("health", language, limit)
-    
-    def get_science_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """Get science news"""
-        return self.get_category_news("science", language, limit)
-    
-    def get_entertainment_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """Get entertainment news"""
-        return self.get_category_news("entertainment", language, limit)
-    
-    def get_general_news(self, language: str = "en", limit: int = 10) -> Optional[NewsResponse]:
-        """Get general news"""
-        return self.get_category_news("general", language, limit)
     
     def get_available_categories(self) -> List[str]:
         """Get available news categories"""
@@ -174,12 +136,12 @@ class NewsClient:
         """Get available language codes"""
         return NEWS_LANGUAGES.copy()
     
-    def format_headlines(self, response: NewsResponse) -> str:
+    def format_headlines(self, response: NewsApiResponse) -> str:
         """
         Format headlines
         
         Args:
-            response: News response
+            response: News API response
             
         Returns:
             Formatted news string
@@ -190,12 +152,12 @@ class NewsClient:
         header = f"Top Headlines (Found {response.meta.found}, showing {response.meta.returned}):\n"
         return header + format_news_list(response.data)
     
-    def format_search_results(self, response: NewsResponse, query: str) -> str:
+    def format_search_results(self, response: NewsApiResponse, query: str) -> str:
         """
         Format search results
         
         Args:
-            response: News response
+            response: News API response
             query: Search keywords
             
         Returns:
@@ -207,12 +169,12 @@ class NewsClient:
         header = f"Search results for '{query}' (Found {response.meta.found}, showing {response.meta.returned}):\n"
         return header + format_news_list(response.data)
     
-    def format_category_news(self, response: NewsResponse, category: str) -> str:
+    def format_category_news(self, response: NewsApiResponse, category: str) -> str:
         """
         Format category news
         
         Args:
-            response: News response
+            response: News API response
             category: Category
             
         Returns:
@@ -235,46 +197,4 @@ class NewsClient:
         Returns:
             Formatted article details
         """
-        return format_news_article(article)
-    
-    def comprehensive_news_search(self, query: str, 
-                                 max_per_category: int = 3) -> str:
-        """
-        Comprehensive news search
-        
-        Args:
-            query: Search keywords
-            max_per_category: Maximum results per category
-            
-        Returns:
-            Comprehensive search results string
-        """
-        results = []
-        
-        # Search related news
-        search_results = self.search_news(query, limit=max_per_category * 2)
-        if search_results and search_results.data:
-            results.append(f"Search results for '{query}':")
-            results.append(format_news_list(search_results.data[:max_per_category]))
-        
-        # Try to match categories
-        query_lower = query.lower()
-        category_matches = {
-            "technology": ["tech", "technology", "ai", "software"],
-            "business": ["business", "finance", "economy", "market"],
-            "sports": ["sports", "game", "match", "tournament"],
-            "health": ["health", "medical", "covid", "vaccine"],
-            "science": ["science", "research", "study", "discovery"],
-            "entertainment": ["entertainment", "movie", "celebrity", "film"]
-        }
-        
-        for category, keywords in category_matches.items():
-            if any(keyword in query_lower for keyword in keywords):
-                category_results = self.get_category_news(category, limit=max_per_category)
-                if category_results and category_results.data:
-                    category_name = get_category_display_name(category)
-                    results.append(f"\n{category_name} Related News:")
-                    results.append(format_news_list(category_results.data))
-                break
-        
-        return "\n\n".join(results) if results else f"No news found related to '{query}'" 
+        return format_news_article(article) 

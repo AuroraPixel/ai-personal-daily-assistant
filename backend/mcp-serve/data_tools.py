@@ -1,15 +1,16 @@
 """
 Data Tools Module
-Contains all JSON placeholder data related MCP tools
+Contains all JSONPlaceholder data-related MCP tools
 
 Author: Andrew Wang
 """
 
+import json
 from fastmcp import FastMCP
 from remote_api.jsonplaceholder import JSONPlaceholderClient
 
-# Initialize JSON placeholder client
-json_client = JSONPlaceholderClient()
+# Initialize jsonplaceholder client
+data_client = JSONPlaceholderClient()
 
 
 def register_data_tools(mcp: FastMCP):
@@ -22,124 +23,228 @@ def register_data_tools(mcp: FastMCP):
     
     # Get all users
     @mcp.tool
-    def get_all_users() -> str:
+    def get_users() -> str:
         """
-        Get all users list
-            Returns:
-                Users list | Error message
+        Get all users from JSONPlaceholder
+        
+        Returns:
+            JSON string of users in format:
+            {
+                "users": [
+                    {
+                        "id": 1,
+                        "name": "Leanne Graham",
+                        "username": "Bret",
+                        "email": "Sincere@april.biz",
+                        "address": {
+                            "street": "Kulas Light",
+                            "suite": "Apt. 556",
+                            "city": "Gwenborough",
+                            "zipcode": "92998-3874",
+                            "geo": {
+                                "lat": "-37.3159",
+                                "lng": "81.1496"
+                            }
+                        },
+                        "phone": "1-770-736-8031 x56442",
+                        "website": "hildegard.org",
+                        "company": {
+                            "name": "Romaguera-Crona",
+                            "catchPhrase": "Multi-layered client-server neural-net",
+                            "bs": "harness real-time e-markets"
+                        }
+                    }
+                ]
+            }
         """
         try:
-            users = json_client.get_users()
-            if users:
-                return json_client.format_users_list(users)
-            return "Unable to get users list"
+            result = data_client.get_users()
+            if result:
+                return json.dumps(result.model_dump(), ensure_ascii=False)
+            return json.dumps({"error": "Unable to get users"}, ensure_ascii=False)
         except Exception as e:
-            return f"Error getting users list: {str(e)}"
+            return json.dumps({"error": f"Error getting users: {str(e)}"}, ensure_ascii=False)
 
     # Get specific user
     @mcp.tool
-    def get_user_info(user_id: int) -> str:
+    def get_user(user_id: int) -> str:
         """
-        Get specific user detailed information
-            Args:
-                user_id: User ID
-            Returns:
-                User detailed information | Error message
-        """
-        try:
-            user = json_client.get_user(user_id)
-            if user:
-                from remote_api.jsonplaceholder.models import format_user
-                return format_user(user)
-            return f"No user found with ID {user_id}"
-        except Exception as e:
-            return f"Error getting user information: {str(e)}"
-
-    # Get all posts
-    @mcp.tool
-    def get_all_posts() -> str:
-        """
-        Get all posts list
-            Returns:
-                Posts list | Error message
-        """
-        try:
-            posts = json_client.get_posts()
-            if posts:
-                return json_client.format_posts_list(posts)
-            return "Unable to get posts list"
-        except Exception as e:
-            return f"Error getting posts list: {str(e)}"
-
-    # Get specific post
-    @mcp.tool
-    def get_post_info(post_id: int) -> str:
-        """
-        Get specific post detailed information
-            Args:
-                post_id: Post ID
-            Returns:
-                Post detailed information | Error message
+        Get specific user by ID
+        
+        Args:
+            user_id: User ID (1-10)
+            
+        Returns:
+            JSON string of user in format:
+            {
+                "user": {
+                    "id": 1,
+                    "name": "Leanne Graham",
+                    "username": "Bret",
+                    "email": "Sincere@april.biz",
+                    "address": {
+                        "street": "Kulas Light",
+                        "suite": "Apt. 556",
+                        "city": "Gwenborough",
+                        "zipcode": "92998-3874",
+                        "geo": {
+                            "lat": "-37.3159",
+                            "lng": "81.1496"
+                        }
+                    },
+                    "phone": "1-770-736-8031 x56442",
+                    "website": "hildegard.org",
+                    "company": {
+                        "name": "Romaguera-Crona",
+                        "catchPhrase": "Multi-layered client-server neural-net",
+                        "bs": "harness real-time e-markets"
+                    }
+                }
+            }
         """
         try:
-            post = json_client.get_post(post_id)
-            if post:
-                from remote_api.jsonplaceholder.models import format_post
-                return format_post(post)
-            return f"No post found with ID {post_id}"
+            if user_id < 1 or user_id > 10:
+                return json.dumps({"error": "User ID must be between 1 and 10"}, ensure_ascii=False)
+            
+            result = data_client.get_user(user_id)
+            if result:
+                return json.dumps(result.model_dump(), ensure_ascii=False)
+            return json.dumps({"error": f"User {user_id} not found"}, ensure_ascii=False)
         except Exception as e:
-            return f"Error getting post information: {str(e)}"
+            return json.dumps({"error": f"Error getting user {user_id}: {str(e)}"}, ensure_ascii=False)
 
-    # Get user posts
+    # Get user's posts
     @mcp.tool
     def get_user_posts(user_id: int) -> str:
         """
-        Get all posts by specific user
-            Args:
-                user_id: User ID
-            Returns:
-                User's posts list | Error message
+        Get user's posts
+        
+        Args:
+            user_id: User ID (1-10)
+            
+        Returns:
+            JSON string of user's posts in format:
+            {
+                "posts": [
+                    {
+                        "id": 1,
+                        "userId": 1,
+                        "title": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit",
+                        "body": "quia et suscipit\\nsuscipit recusandae consequuntur expedita et cum\\nreprehenderit molestiae ut ut quas totam\\nnostrum rerum est autem sunt rem eveniet architecto"
+                    }
+                ]
+            }
         """
         try:
-            posts = json_client.get_user_posts(user_id)
-            if posts:
-                return json_client.format_posts_list(posts)
-            return f"User {user_id} has no published posts"
+            if user_id < 1 or user_id > 10:
+                return json.dumps({"error": "User ID must be between 1 and 10"}, ensure_ascii=False)
+            
+            result = data_client.get_user_posts(user_id)
+            if result:
+                return json.dumps(result.model_dump(), ensure_ascii=False)
+            return json.dumps({"error": f"No posts found for user {user_id}"}, ensure_ascii=False)
         except Exception as e:
-            return f"Error getting user posts: {str(e)}"
+            return json.dumps({"error": f"Error getting posts for user {user_id}: {str(e)}"}, ensure_ascii=False)
 
-    # Get all todos
+    # Get user's comments
     @mcp.tool
-    def get_all_todos() -> str:
+    def get_user_comments(user_id: int) -> str:
         """
-        Get all todos list
-            Returns:
-                Todos list | Error message
+        Get user's comments (comments on posts by the user)
+        
+        Args:
+            user_id: User ID (1-10)
+            
+        Returns:
+            JSON string of user's comments in format:
+            {
+                "comments": [
+                    {
+                        "id": 1,
+                        "postId": 1,
+                        "name": "id labore ex et quam laborum",
+                        "email": "Eliseo@gardner.biz",
+                        "body": "laudantium enim quasi est quidem magnam voluptate ipsam eos\\ntempora quo necessitatibus\\ndolor quam autem quasi\\nreiciendis et nam sapiente accusantium"
+                    }
+                ]
+            }
         """
         try:
-            todos = json_client.get_todos()
-            if todos:
-                return json_client.format_todos_list(todos)
-            return "Unable to get todos list"
+            if user_id < 1 or user_id > 10:
+                return json.dumps({"error": "User ID must be between 1 and 10"}, ensure_ascii=False)
+            
+            result = data_client.get_user_comments(user_id)
+            if result:
+                return json.dumps(result.model_dump(), ensure_ascii=False)
+            return json.dumps({"error": f"No comments found for user {user_id}"}, ensure_ascii=False)
         except Exception as e:
-            return f"Error getting todos: {str(e)}"
+            return json.dumps({"error": f"Error getting comments for user {user_id}: {str(e)}"}, ensure_ascii=False)
 
-    # Get user todos
+    # Get post's comments
+    @mcp.tool
+    def get_post_comments(post_id: int) -> str:
+        """
+        Get comments for a specific post
+        
+        Args:
+            post_id: Post ID (1-100)
+            
+        Returns:
+            JSON string of post's comments in format:
+            {
+                "comments": [
+                    {
+                        "id": 1,
+                        "postId": 1,
+                        "name": "id labore ex et quam laborum",
+                        "email": "Eliseo@gardner.biz",
+                        "body": "laudantium enim quasi est quidem magnam voluptate ipsam eos\\ntempora quo necessitatibus\\ndolor quam autem quasi\\nreiciendis et nam sapiente accusantium"
+                    }
+                ]
+            }
+        """
+        try:
+            if post_id < 1 or post_id > 100:
+                return json.dumps({"error": "Post ID must be between 1 and 100"}, ensure_ascii=False)
+            
+            result = data_client.get_post_comments(post_id)
+            if result:
+                return json.dumps(result.model_dump(), ensure_ascii=False)
+            return json.dumps({"error": f"No comments found for post {post_id}"}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": f"Error getting comments for post {post_id}: {str(e)}"}, ensure_ascii=False)
+
+    # Get user's todos
     @mcp.tool
     def get_user_todos(user_id: int) -> str:
         """
-        Get specific user's todos
-            Args:
-                user_id: User ID
-            Returns:
-                User's todos list | Error message
+        Get user's todos
+        
+        Args:
+            user_id: User ID (1-10)
+            
+        Returns:
+            JSON string of user's todos in format:
+            {
+                "todos": [
+                    {
+                        "id": 1,
+                        "userId": 1,
+                        "title": "delectus aut autem",
+                        "completed": false
+                    }
+                ]
+            }
         """
         try:
-            todos = json_client.get_user_todos(user_id)
-            if todos:
-                return json_client.format_todos_list(todos)
-            return f"User {user_id} has no todos"
+            if user_id < 1 or user_id > 10:
+                return json.dumps({"error": "User ID must be between 1 and 10"}, ensure_ascii=False)
+            
+            result = data_client.get_user_todos(user_id)
+            if result:
+                return json.dumps(result.model_dump(), ensure_ascii=False)
+            return json.dumps({"error": f"No todos found for user {user_id}"}, ensure_ascii=False)
         except Exception as e:
-            return f"Error getting user todos: {str(e)}"
+            return json.dumps({"error": f"Error getting todos for user {user_id}: {str(e)}"}, ensure_ascii=False)
 
     print("✅ Data tools registered")
