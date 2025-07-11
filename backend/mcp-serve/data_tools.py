@@ -1,144 +1,145 @@
 """
-数据工具模块 (Data Tools Module)
-包含所有JSON占位符数据相关的MCP工具
+Data Tools Module
+Contains all JSON placeholder data related MCP tools
+
+Author: Andrew Wang
 """
 
 from fastmcp import FastMCP
 from remote_api.jsonplaceholder import JSONPlaceholderClient
 
-# 初始化JSON占位符客户端 (Initialize JSON placeholder client)
+# Initialize JSON placeholder client
 json_client = JSONPlaceholderClient()
 
 
 def register_data_tools(mcp: FastMCP):
     """
-    注册数据工具到MCP实例
     Register data tools to MCP instance
     
     Args:
-        mcp: FastMCP实例
+        mcp: FastMCP instance
     """
     
-    # 获取所有用户 (Get all users)
+    # Get all users
     @mcp.tool
     def get_all_users() -> str:
         """
-        获取所有用户列表
+        Get all users list
             Returns:
-                用户列表 | 错误信息
+                Users list | Error message
         """
         try:
             users = json_client.get_users()
             if users:
                 return json_client.format_users_list(users)
-            return "无法获取用户列表"
+            return "Unable to get users list"
         except Exception as e:
-            return f"获取用户列表时出错: {str(e)}"
+            return f"Error getting users list: {str(e)}"
 
-    # 获取指定用户信息 (Get specific user)
+    # Get specific user
     @mcp.tool
     def get_user_info(user_id: int) -> str:
         """
-        获取指定用户的详细信息
+        Get specific user detailed information
             Args:
-                user_id: 用户ID
+                user_id: User ID
             Returns:
-                用户详细信息 | 错误信息
+                User detailed information | Error message
         """
         try:
             user = json_client.get_user(user_id)
             if user:
                 from remote_api.jsonplaceholder.models import format_user
                 return format_user(user)
-            return f"未找到ID为{user_id}的用户"
+            return f"No user found with ID {user_id}"
         except Exception as e:
-            return f"获取用户信息时出错: {str(e)}"
+            return f"Error getting user information: {str(e)}"
 
-    # 获取所有帖子 (Get all posts)
+    # Get all posts
     @mcp.tool
     def get_all_posts() -> str:
         """
-        获取所有帖子列表
+        Get all posts list
             Returns:
-                帖子列表 | 错误信息
+                Posts list | Error message
         """
         try:
             posts = json_client.get_posts()
             if posts:
                 return json_client.format_posts_list(posts)
-            return "无法获取帖子列表"
+            return "Unable to get posts list"
         except Exception as e:
-            return f"获取帖子列表时出错: {str(e)}"
+            return f"Error getting posts list: {str(e)}"
 
-    # 获取指定帖子 (Get specific post)
+    # Get specific post
     @mcp.tool
     def get_post_info(post_id: int) -> str:
         """
-        获取指定帖子的详细信息
+        Get specific post detailed information
             Args:
-                post_id: 帖子ID
+                post_id: Post ID
             Returns:
-                帖子详细信息 | 错误信息
+                Post detailed information | Error message
         """
         try:
             post = json_client.get_post(post_id)
             if post:
                 from remote_api.jsonplaceholder.models import format_post
                 return format_post(post)
-            return f"未找到ID为{post_id}的帖子"
+            return f"No post found with ID {post_id}"
         except Exception as e:
-            return f"获取帖子信息时出错: {str(e)}"
+            return f"Error getting post information: {str(e)}"
 
-    # 获取用户帖子 (Get user posts)
+    # Get user posts
     @mcp.tool
     def get_user_posts(user_id: int) -> str:
         """
-        获取指定用户的所有帖子
+        Get all posts by specific user
             Args:
-                user_id: 用户ID
+                user_id: User ID
             Returns:
-                用户的帖子列表 | 错误信息
+                User's posts list | Error message
         """
         try:
             posts = json_client.get_user_posts(user_id)
             if posts:
                 return json_client.format_posts_list(posts)
-            return f"用户{user_id}没有发布任何帖子"
+            return f"User {user_id} has no published posts"
         except Exception as e:
-            return f"获取用户帖子时出错: {str(e)}"
+            return f"Error getting user posts: {str(e)}"
 
-    # 获取所有待办事项 (Get all todos)
+    # Get all todos
     @mcp.tool
     def get_all_todos() -> str:
         """
-        获取所有待办事项列表
+        Get all todos list
             Returns:
-                待办事项列表 | 错误信息
+                Todos list | Error message
         """
         try:
             todos = json_client.get_todos()
             if todos:
                 return json_client.format_todos_list(todos)
-            return "无法获取待办事项列表"
+            return "Unable to get todos list"
         except Exception as e:
-            return f"获取待办事项时出错: {str(e)}"
+            return f"Error getting todos: {str(e)}"
 
-    # 获取用户待办事项 (Get user todos)
+    # Get user todos
     @mcp.tool
     def get_user_todos(user_id: int) -> str:
         """
-        获取指定用户的待办事项
+        Get specific user's todos
             Args:
-                user_id: 用户ID
+                user_id: User ID
             Returns:
-                用户的待办事项列表 | 错误信息
+                User's todos list | Error message
         """
         try:
             todos = json_client.get_user_todos(user_id)
             if todos:
                 return json_client.format_todos_list(todos)
-            return f"用户{user_id}没有任何待办事项"
+            return f"User {user_id} has no todos"
         except Exception as e:
-            return f"获取用户待办事项时出错: {str(e)}"
+            return f"Error getting user todos: {str(e)}"
 
-    print("✅ 数据工具已注册 (Data tools registered)")
+    print("✅ Data tools registered")
