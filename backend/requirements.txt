@@ -12,3 +12,21 @@ sqlalchemy>=2.0.0
 pymysql>=1.0.0
 cryptography>=3.4.0
 alembic>=1.12.0
+
+# Vector Database Dependencies (OpenAI only)
+chromadb==1.0.15
+numpy>=1.26.0
+openai>=1.0.0
+# Add required dependencies for the newer version of ChromaDB
+duckdb<0.10.4
+pyarrow
+pydantic<3
+# bcrypt is needed for newer Chroma versions
+bcrypt
+# protobuf is sometimes needed for newer Chroma versions
+protobuf==4.25.3
+# opentelemetry-api, opentelemetry-exporter-otlp-proto-http, opentelemetry-sdk are needed by chromadb
+opentelemetry-api
+opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk
+posthog
