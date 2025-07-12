@@ -8,3 +8,7 @@ uvicorn[standard]
 websockets
 pydantic>=2.0.0
 typing-extensions
+sqlalchemy>=2.0.0
+pymysql>=1.0.0
+cryptography>=3.4.0
+alembic>=1.12.0
