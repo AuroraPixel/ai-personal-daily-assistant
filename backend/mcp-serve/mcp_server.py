@@ -17,7 +17,11 @@ from fastmcp import FastMCP
 from weather_tools import register_weather_tools
 from news_tools import register_news_tools
 from recipe_tools import register_recipe_tools
-from data_tools import register_data_tools
+from user_data_tools import register_user_data_tools
+
+# Import database initialization components
+from core.database_core import DatabaseClient
+from core.vector_core import ChromaVectorClient, VectorConfig
 
 # =============================================================================
 # MCP Service Configuration and Initialization
@@ -29,10 +33,54 @@ news_mcp = FastMCP("News")
 register_news_tools(news_mcp)       # Register news tools
 recipe_mcp = FastMCP("Recipe")
 register_recipe_tools(recipe_mcp)     # Register recipe tools
-data_mcp = FastMCP("Data")
-register_data_tools(data_mcp)
+user_data_mcp = FastMCP("UserData")
+register_user_data_tools(user_data_mcp)  # Register user data tools
 
 mcp = FastMCP("MainApp")
+
+def initialize_databases():
+    """
+    Initialize MySQL and Vector databases
+    
+    Returns:
+        bool: True if initialization successful, False otherwise
+    """
+    try:
+        print("🔄 Initializing databases...")
+        
+        # Initialize MySQL database
+        print("📊 Initializing MySQL database...")
+        db_client = DatabaseClient()
+        if not db_client.initialize():
+            print("❌ MySQL database initialization failed")
+            return False
+        
+        # Create tables if they don't exist
+        if not db_client.create_tables():
+            print("❌ Failed to create database tables")
+            return False
+        
+        print("✅ MySQL database initialized successfully")
+        
+        # Initialize vector database
+        print("🔍 Initializing vector database...")
+        try:
+            vector_config = VectorConfig.from_env()
+            vector_client = ChromaVectorClient(vector_config)
+            health = vector_client.health_check()
+            if health.get('status') != 'healthy':
+                print("⚠️  Vector database health check failed")
+            else:
+                print("✅ Vector database initialized successfully")
+        except Exception as e:
+            print(f"⚠️  Vector database initialization failed: {e}")
+            print("    MCP service will continue without vector search capabilities")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        return False
 
 async def create_mcp_server():
     """
@@ -43,16 +91,20 @@ async def create_mcp_server():
     """
     print("🚀 Starting AI Personal Daily Assistant MCP Service...")
     
+    # Initialize databases first
+    if not initialize_databases():
+        print("❌ Database initialization failed, but continuing with MCP service")
+    
     # Create MCP instance
     await mcp.import_server(weather_mcp, prefix="weather")
     await mcp.import_server(news_mcp, prefix="news")
     await mcp.import_server(recipe_mcp, prefix="recipe")
-    await mcp.import_server(data_mcp, prefix="data")
+    await mcp.import_server(user_data_mcp, prefix="user_data")
     
     print("📦 Registering tool modules...")
     
     # Register all tool modules
-    # Register data tools
+    # All tools are registered during import_server calls
     
     print("✅ All tool modules registered successfully!")
     print("🌟 MCP service is ready to handle requests")
