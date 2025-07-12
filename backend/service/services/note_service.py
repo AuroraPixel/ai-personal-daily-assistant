@@ -555,7 +555,7 @@ class NoteService:
                     'title': metadata.get('title'),
                     'tag': metadata.get('tag'),
                     'score': result.score,
-                    'text_preview': result.text[:200] + '...' if len(result.text) > 200 else result.text
+                    'text': result.text
                 })
             
             return search_results
