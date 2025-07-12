@@ -7,6 +7,11 @@ from sqlalchemy.sql import func
 from core.database_core import BaseModel
 
 
+class InvalidTagError(Exception):
+    """标签验证异常"""
+    pass
+
+
 class Note(BaseModel):
     """
     笔记模型
@@ -14,6 +19,14 @@ class Note(BaseModel):
     存储用户的笔记内容，用户信息来自JSONPlaceholder API
     """
     __tablename__ = 'notes'
+    
+    # 允许的标签选项
+    ALLOWED_TAGS = [
+        'lifestyle tips',
+        'cooking advice',
+        'weather interpretation',
+        'news context'
+    ]
     
     # 用户ID（来自JSONPlaceholder API）
     user_id = Column(Integer, nullable=False, comment='用户ID（来自JSONPlaceholder）')
@@ -24,8 +37,8 @@ class Note(BaseModel):
     # 笔记内容
     content = Column(Text, comment='笔记内容')
     
-    # 笔记标签（JSON字符串或逗号分隔）
-    tags = Column(String(500), comment='笔记标签')
+    # 笔记标签（单个标签，只允许指定选项）
+    tag = Column(String(50), comment='笔记标签')
     
     # 笔记状态（草稿、已发布、已归档等）
     status = Column(String(20), default='draft', comment='笔记状态')
@@ -38,6 +51,7 @@ class Note(BaseModel):
         Index('idx_notes_user_id', 'user_id'),
         Index('idx_notes_title', 'title'),
         Index('idx_notes_status', 'status'),
+        Index('idx_notes_tag', 'tag'),
         Index('idx_notes_last_updated', 'last_updated'),
         Index('idx_notes_user_status', 'user_id', 'status'),
     )
@@ -50,26 +64,43 @@ class Note(BaseModel):
         return super().to_dict()
     
     @classmethod
+    def validate_tag(cls, tag):
+        """验证标签是否有效"""
+        if tag is None:
+            return True  # 允许空标签
+        
+        if tag not in cls.ALLOWED_TAGS:
+            raise InvalidTagError(
+                f"Invalid tag '{tag}'. Allowed tags are: {', '.join(cls.ALLOWED_TAGS)}"
+            )
+        return True
+    
+    @classmethod
     def create_from_dict(cls, data):
         """从字典创建实例"""
+        tag = data.get('tag', '')
+        
+        # 验证标签
+        if tag:
+            cls.validate_tag(tag)
+        
         return cls(
             user_id=data.get('user_id'),
             title=data.get('title', ''),
             content=data.get('content', ''),
-            tags=data.get('tags', ''),
+            tag=tag,
             status=data.get('status', 'draft')
         )
     
-    def get_tags_list(self):
-        """获取标签列表"""
-        tags_value = getattr(self, 'tags', None)
-        if not tags_value:
-            return []
-        return [tag.strip() for tag in tags_value.split(',') if tag.strip()]
+    def set_tag(self, tag):
+        """设置标签"""
+        if tag:
+            self.validate_tag(tag)
+        self.tag = tag
     
-    def set_tags_list(self, tags_list):
-        """设置标签列表"""
-        self.tags = ','.join(tags_list) if tags_list else ''
+    def get_tag(self):
+        """获取标签"""
+        return getattr(self, 'tag', None)
     
     def get_summary(self, max_length=100):
         """获取笔记摘要"""
