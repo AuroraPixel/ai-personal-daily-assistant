@@ -32,12 +32,9 @@ from core.web_socket_core import (
     WebSocketMessage,
     MessageType,
     UserInfo,
-    WebSocketError,
     parse_websocket_message,
     validate_message,
     create_error_message,
-    extract_query_params,
-    validate_user_info,
     generate_connection_id,
     WebSocketConfig
 )
@@ -72,6 +69,7 @@ class ChatResponse(BaseModel):
     agents: List[Dict[str, Any]]
     raw_response: str
     guardrails: List[GuardrailCheck] = []
+    is_finished: bool = False
 
 # =========================
 # 全局变量
@@ -100,6 +98,34 @@ def initialize_context(user_id: int) -> PersonalAssistantContext:
         )
     
     return assistant_manager.create_user_context(user_id)
+
+# =========================
+# 构建智能体列表
+# =========================
+def _build_agents_list() -> List[Dict[str, Any]]:
+    """Build a list of all available agents and their metadata."""
+    if assistant_manager is None:
+        return []
+    
+    def make_agent_dict(agent):
+        return {
+            "name": agent.name,
+            "description": getattr(agent, "handoff_description", ""),
+            "handoffs": [getattr(h, "agent_name", getattr(h, "name", "")) for h in getattr(agent, "handoffs", [])],
+            "tools": [getattr(t, "name", getattr(t, "__name__", "")) for t in getattr(agent, "tools", [])],
+            "input_guardrails": [_get_guardrail_name(g) for g in getattr(agent, "input_guardrails", [])],
+        }
+    
+    try:
+        return [
+            make_agent_dict(assistant_manager.get_triage_agent()),
+            make_agent_dict(assistant_manager.get_news_agent()),
+            make_agent_dict(assistant_manager.get_recipe_agent()),
+            make_agent_dict(assistant_manager.get_personal_agent()),
+            make_agent_dict(assistant_manager.get_weather_agent()),
+        ]
+    except Exception:
+        return []
 
 # =========================
 # 初始化函数
@@ -221,7 +247,7 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str) -> 
             raw_response="",
             events=[],
             context=ctx.model_dump(),
-            agents=[],
+            agents=_build_agents_list(),
             guardrails=[]
         )
         
@@ -408,6 +434,8 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str) -> 
                         room_id=room_id
                     )
                     await connection_manager.send_to_connection(connection_id, response_message)
+        
+        chat_response.is_finished = True
                     
         # 保存助手的完整回复到会话
         full_assistant_response = ""

@@ -94,7 +94,15 @@ function App() {
             }));
           
           if (newMessages.length > 0) {
-            setMessages((prev) => [...prev, ...newMessages]);
+            // 检查是否已经有相同内容的流式响应消息被保存
+            setMessages((prev) => {
+              // 移除可能重复的流式响应消息
+              const filteredPrev = prev.filter(msg => 
+                !(msg.id.endsWith('_streaming') && 
+                  newMessages.some(newMsg => newMsg.content.trim() === msg.content.trim()))
+              );
+              return [...filteredPrev, ...newMessages];
+            });
           }
           
           setStreamingResponse('');
@@ -123,6 +131,18 @@ function App() {
   // Send a user message
   const handleSendMessage = async (content: string) => {
     console.log('💬 用户发送消息:', content);
+    
+    // 在清空流式响应之前，先保存未完成的流式响应到消息列表
+    if (streamingResponse && streamingResponse.trim()) {
+      console.log('💾 保存未完成的流式响应到消息列表:', streamingResponse);
+      const streamingMsg: Message = {
+        id: Date.now().toString() + '_streaming',
+        content: streamingResponse,
+        role: "assistant",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, streamingMsg]);
+    }
     
     const userMsg: Message = {
       id: Date.now().toString(),

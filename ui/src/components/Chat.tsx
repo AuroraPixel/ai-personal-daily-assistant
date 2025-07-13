@@ -155,15 +155,15 @@ export function Chat({
           return (
             <div
               key={idx}
-              className={`flex mb-5 text-sm ${msg.role === "user" ? "justify-end" : "justify-start"
+              className={`flex mb-6 text-sm ${msg.role === "user" ? "justify-end" : "justify-start"
                 }`}
             >
               {msg.role === "user" ? (
-                <div className="ml-4 rounded-[16px] rounded-br-[4px] px-4 py-2 md:ml-24 bg-black text-white font-light max-w-[80%]">
+                <div className="ml-4 rounded-2xl rounded-br-md px-5 py-3 md:ml-24 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium max-w-[80%] shadow-lg transform hover:scale-[1.02] transition-all duration-200">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
               ) : (
-                <div className="mr-4 rounded-[16px] rounded-bl-[4px] px-4 py-2 md:mr-24 text-zinc-900 bg-[#ECECF1] font-light max-w-[80%]">
+                <div className="mr-4 rounded-2xl rounded-bl-md px-5 py-3 md:mr-24 text-gray-800 bg-gradient-to-r from-gray-100 to-gray-200 font-medium max-w-[80%] shadow-md border border-gray-200 transform hover:scale-[1.02] transition-all duration-200">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
               )}
@@ -181,9 +181,9 @@ export function Chat({
           </div>
         )}
         {streamingResponse && (
-          <div className="flex mb-5 text-sm justify-start">
-            <div className="mr-4 rounded-[16px] rounded-bl-[4px] px-4 py-2 md:mr-24 text-zinc-900 bg-blue-100/50 font-light max-w-[80%] border border-blue-200/50">
-              <div className="text-xs text-blue-600 font-medium mb-1 flex items-center gap-1">
+          <div className="flex mb-6 text-sm justify-start">
+            <div className="mr-4 rounded-2xl rounded-bl-md px-5 py-3 md:mr-24 text-gray-800 bg-gradient-to-r from-blue-50 to-blue-100 font-medium max-w-[80%] shadow-md border border-blue-200 transform hover:scale-[1.02] transition-all duration-200">
+              <div className="text-xs text-blue-600 font-semibold mb-2 flex items-center gap-2">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                 AI 正在回复...
               </div>
@@ -192,12 +192,16 @@ export function Chat({
           </div>
         )}
         {isLoading && !streamingResponse && (
-          <div className="flex mb-5 text-sm justify-start">
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 bg-gray-400 rounded-full animate-pulse"></div>
-              <div className="h-2 w-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-              <div className="h-2 w-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-              <span className="text-xs text-gray-500 ml-2">正在处理...</span>
+          <div className="flex mb-6 text-sm justify-start">
+            <div className="mr-4 rounded-2xl rounded-bl-md px-5 py-3 md:mr-24 bg-gradient-to-r from-gray-50 to-gray-100 font-medium max-w-[80%] shadow-md border border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1">
+                  <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse"></div>
+                  <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                </div>
+                <span className="text-sm text-gray-700 font-medium">正在处理...</span>
+              </div>
             </div>
           </div>
         )}
@@ -224,26 +228,29 @@ export function Chat({
 
         <div className="flex items-center">
           <div className="flex w-full items-center pb-4 md:pb-1">
-            <div className={`flex w-full flex-col gap-1.5 rounded-2xl p-2.5 pl-1.5 bg-white border transition-colors ${
+            <div className={`flex w-full flex-col rounded-2xl p-3 bg-white border-2 transition-all duration-200 ${
               wsStatus !== 'connected' 
-                ? 'border-gray-300 bg-gray-50' 
-                : 'border-green-200 shadow-sm'
+                ? 'border-gray-200 bg-gray-50' 
+                : 'border-blue-200 shadow-lg hover:shadow-xl focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100'
             }`}>
-              <div className="flex items-end gap-1.5 md:gap-2 pl-4">
+              <div className="flex items-end gap-3">
                 <div className="flex min-w-0 flex-1 flex-col">
                   <textarea
                     id="prompt-textarea"
                     tabIndex={0}
                     dir="auto"
-                    rows={2}
+                    rows={1}
                     placeholder={
                       wsStatus !== 'connected' 
                         ? "连接断开，无法发送消息"
-                        : "输入消息..."
+                        : "在这里输入您的消息..."
                     }
-                    className={`mb-2 resize-none border-0 focus:outline-none text-sm px-0 pb-6 pt-2 ${
-                      wsStatus !== 'connected' ? 'bg-gray-50 text-gray-400' : 'bg-transparent'
+                    className={`resize-none border-0 focus:outline-none text-sm px-2 py-3 rounded-lg transition-all duration-200 ${
+                      wsStatus !== 'connected' 
+                        ? 'bg-gray-50 text-gray-400' 
+                        : 'bg-gray-50 hover:bg-gray-100 focus:bg-white text-gray-900 placeholder-gray-500'
                     }`}
+                    style={{ minHeight: '44px', maxHeight: '120px' }}
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -253,18 +260,18 @@ export function Chat({
                   />
                 </div>
                 <button
-                  disabled={wsStatus !== 'connected' || !inputText.trim()}
-                  className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors focus:outline-none ${
-                    wsStatus !== 'connected' || !inputText.trim()
-                      ? 'bg-gray-300 text-gray-400 cursor-not-allowed'
-                      : 'bg-black text-white hover:opacity-70'
+                  disabled={wsStatus !== 'connected' || !inputText.trim() || isSending}
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                    wsStatus !== 'connected' || !inputText.trim() || isSending
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 hover:shadow-lg transform hover:scale-105 focus:ring-blue-300'
                   }`}
                   onClick={handleSend}
                 >
                   {isSending ? (
-                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <RefreshCw className="h-5 w-5 animate-spin" />
                   ) : (
-                    <Send className="h-4 w-4" />
+                    <Send className="h-5 w-5" />
                   )}
                 </button>
               </div>
