@@ -5,6 +5,25 @@ import { SeatMap } from "./seat-map";
 import type { WebSocketConnectionStatus } from "../lib/websocket";
 import { Wifi, WifiOff, RefreshCw, Send, AlertCircle } from "lucide-react";
 
+// 打字机效果的样式
+const typewriterStyles = `
+  .typewriter-content {
+    overflow: hidden;
+    border-right: 2px solid transparent;
+    white-space: normal;
+    word-wrap: break-word;
+  }
+  
+  .typewriter-cursor {
+    animation: blink 1s infinite;
+  }
+  
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+`;
+
 interface ChatProps {
   messages: Message[];
   onSendMessage: (message: string) => void;
@@ -122,6 +141,7 @@ export function Chat({
 
   return (
     <div className="flex flex-col h-full flex-1 bg-white shadow-sm border border-gray-200 border-t-0 rounded-xl">
+      <style>{typewriterStyles}</style>
       <div className="bg-blue-600 text-white h-12 px-4 flex items-center justify-between rounded-t-xl">
         <h2 className="font-semibold text-sm sm:text-base lg:text-lg">
           Customer View
@@ -187,7 +207,10 @@ export function Chat({
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                 AI 正在回复...
               </div>
-              <ReactMarkdown>{streamingResponse}</ReactMarkdown>
+              <div className="typewriter-content">
+                <ReactMarkdown>{streamingResponse}</ReactMarkdown>
+                <span className="typewriter-cursor inline-block w-0.5 h-4 bg-blue-500 ml-1"></span>
+              </div>
             </div>
           </div>
         )}

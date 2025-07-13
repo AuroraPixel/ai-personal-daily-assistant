@@ -48,65 +48,102 @@ function App() {
           return;
         }
         
-        if (content.conversation_id && !conversationId) {
-          setConversationId(content.conversation_id);
+        // 检查是否有 final_response 嵌套结构
+        const responseData = content.final_response || content;
+        
+        if (responseData.conversation_id && !conversationId) {
+          setConversationId(responseData.conversation_id);
         }
         
-        if (content.current_agent) {
-          setCurrentAgent(content.current_agent);
-        }
-        
-        if (content.context) {
-          setContext(content.context);
-        }
-        
-        if (content.events) {
-          const stamped = content.events.map((e: any) => ({
-            ...e,
-            timestamp: e.timestamp ?? Date.now(),
-          }));
-          setEvents((prev) => [...prev, ...stamped]);
-        }
-        
-        if (content.agents) {
-          setAgents(content.agents);
-        }
-        
-        if (content.guardrails) {
-          setGuardrails(content.guardrails);
-        }
-        
-        // 处理流式响应
-        if (typeof content.raw_response === 'string' && content.type !== 'completion') {
-          setStreamingResponse(content.raw_response);
-        }
-        
-        // 处理完成的消息
-        if (Array.isArray(content.messages) && content.type === 'completion') {
-          const newMessages: Message[] = content.messages
-            .filter((m: any) => m && typeof m.content === 'string' && typeof m.agent === 'string')
-            .map((m: any) => ({
-              id: Date.now().toString() + Math.random().toString(),
-              content: m.content,
-              role: "assistant",
-              agent: m.agent,
-              timestamp: new Date(),
-            }));
+        // 只有is_finished=true时才更新agentview的状态
+        if (responseData.is_finished) {
+          console.log('🎯 处理完成的响应，更新agentview状态');
           
-          if (newMessages.length > 0) {
-            // 检查是否已经有相同内容的流式响应消息被保存
+          if (responseData.current_agent) {
+            console.log('🔄 更新当前代理:', responseData.current_agent);
+            setCurrentAgent(responseData.current_agent);
+          }
+          
+          if (responseData.context) {
+            console.log('🔄 更新上下文:', responseData.context);
+            setContext(responseData.context);
+          }
+          
+          if (responseData.events) {
+            console.log('🔄 更新事件:', responseData.events);
+            const stamped = responseData.events.map((e: any) => ({
+              ...e,
+              timestamp: e.timestamp ?? Date.now(),
+            }));
+            setEvents((prev) => [...prev, ...stamped]);
+          }
+          
+          if (responseData.agents) {
+            console.log('🔄 更新代理列表:', responseData.agents);
+            setAgents(responseData.agents);
+          }
+          
+          if (responseData.guardrails) {
+            console.log('🔄 更新防护栏:', responseData.guardrails);
+            setGuardrails(responseData.guardrails);
+          }
+        }
+        
+        // 处理完成的消息 - 优先处理，确保及时清空流式响应
+        if (responseData.is_finished) {
+          console.log('✅ 处理完成的消息，立即清空流式响应和加载状态');
+          
+          // 立即清空流式响应和加载状态，确保光标和"AI 正在回复..."隐藏
+          setStreamingResponse('');
+          setIsLoading(false);
+          
+          // 如果有完成的消息，直接覆盖渲染
+          if (Array.isArray(responseData.messages) && responseData.messages.length > 0) {
+            const newMessages: Message[] = responseData.messages
+              .filter((m: any) => m && typeof m.content === 'string' && typeof m.agent === 'string')
+              .map((m: any) => ({
+                id: Date.now().toString() + Math.random().toString(),
+                content: m.content,
+                role: "assistant",
+                agent: m.agent,
+                timestamp: new Date(),
+              }));
+            
+            if (newMessages.length > 0) {
+              // 检查是否已经有相同内容的流式响应消息被保存
+              setMessages((prev) => {
+                // 移除可能重复的流式响应消息
+                const filteredPrev = prev.filter(msg => 
+                  !(msg.id.endsWith('_streaming') && 
+                    newMessages.some(newMsg => newMsg.content.trim() === msg.content.trim()))
+                );
+                return [...filteredPrev, ...newMessages];
+              });
+            }
+          } else if (responseData.raw_response) {
+            // 如果没有messages但有raw_response，使用raw_response作为完成的消息
+            const completedMessage: Message = {
+              id: Date.now().toString() + Math.random().toString(),
+              content: responseData.raw_response,
+              role: "assistant",
+              timestamp: new Date(),
+            };
+            
             setMessages((prev) => {
               // 移除可能重复的流式响应消息
               const filteredPrev = prev.filter(msg => 
                 !(msg.id.endsWith('_streaming') && 
-                  newMessages.some(newMsg => newMsg.content.trim() === msg.content.trim()))
+                  msg.content.trim() === completedMessage.content.trim())
               );
-              return [...filteredPrev, ...newMessages];
+              return [...filteredPrev, completedMessage];
             });
           }
-          
-          setStreamingResponse('');
-          setIsLoading(false);
+        } else {
+          // 处理流式响应 - 只有未完成时才显示打字机效果
+          if (typeof responseData.raw_response === 'string') {
+            console.log('📝 显示流式响应:', responseData.raw_response);
+            setStreamingResponse(responseData.raw_response);
+          }
         }
       };
       
@@ -133,6 +170,7 @@ function App() {
     console.log('💬 用户发送消息:', content);
     
     // 在清空流式响应之前，先保存未完成的流式响应到消息列表
+    // 因为现在有is_finished控制，这里保存的是真正未完成的响应
     if (streamingResponse && streamingResponse.trim()) {
       console.log('💾 保存未完成的流式响应到消息列表:', streamingResponse);
       const streamingMsg: Message = {

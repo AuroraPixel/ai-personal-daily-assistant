@@ -25,6 +25,7 @@ export interface ChatResponse {
   context: Record<string, any>;
   agents: Array<Record<string, any>>;
   raw_response: string;
+  is_finished: boolean;
   guardrails: Array<{
     id: string;
     name: string;
