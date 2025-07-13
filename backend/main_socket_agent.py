@@ -233,7 +233,7 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str) -> 
         triage_agent = _get_agent_by_name("Triage Agent")
         
         # 创建或获取会话 - 使用传入的会话ID或默认会话ID
-        conversation_id = user_conversations.get(user_id) or f"user_{user_id}_conversation"
+        conversation_id = user_conversations.get(user_id) or uuid4().hex
         agent_session = await session_manager.get_session(conversation_id)
         
         if agent_session is None:
