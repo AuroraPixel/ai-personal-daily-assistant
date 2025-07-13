@@ -3,7 +3,9 @@ import type { Message } from "../lib/types";
 import ReactMarkdown from "react-markdown";
 import { SeatMap } from "./seat-map";
 import type { WebSocketConnectionStatus } from "../lib/websocket";
-import { Wifi, WifiOff, RefreshCw, Send, AlertCircle } from "lucide-react";
+import { Wifi, WifiOff, RefreshCw, Send, AlertCircle, Menu } from "lucide-react";
+import { ConversationList } from "./ConversationList";
+import { DEFAULT_USER_ID } from "../lib/config";
 
 // 打字机效果的样式
 const typewriterStyles = `
@@ -33,6 +35,10 @@ interface ChatProps {
   streamingResponse?: string;
   /** WebSocket connection status */
   wsStatus?: WebSocketConnectionStatus;
+  /** Current conversation ID */
+  conversationId?: string | null;
+  /** Callback when conversation is selected */
+  onSelectConversation?: (conversationId: string) => void;
 }
 
 export function Chat({ 
@@ -40,7 +46,9 @@ export function Chat({
   onSendMessage, 
   isLoading, 
   streamingResponse, 
-  wsStatus = 'disconnected'
+  wsStatus = 'disconnected',
+  conversationId,
+  onSelectConversation
 }: ChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [inputText, setInputText] = useState("");
@@ -49,6 +57,7 @@ export function Chat({
   const [selectedSeat, setSelectedSeat] = useState<string | undefined>(undefined);
   const [isSending, setIsSending] = useState(false);
   const [lastError, setLastError] = useState<string>("");
+  const [showConversationList, setShowConversationList] = useState(false);
 
   // Auto-scroll to bottom when messages or loading indicator change
   useEffect(() => {
@@ -97,6 +106,16 @@ export function Chat({
     [onSendMessage]
   );
 
+  const handleConversationSelect = useCallback(
+    (selectedConversationId: string) => {
+      if (onSelectConversation) {
+        onSelectConversation(selectedConversationId);
+      }
+      setShowConversationList(false);
+    },
+    [onSelectConversation]
+  );
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && !e.shiftKey && !isComposing) {
@@ -140,17 +159,20 @@ export function Chat({
   const statusInfo = getConnectionStatusInfo();
 
   return (
-    <div className="flex flex-col h-full flex-1 bg-white shadow-sm border border-gray-200 border-t-0 rounded-xl">
+    <div className="flex flex-col h-full flex-1 bg-white shadow-sm border border-gray-200 border-t-0 rounded-xl relative">
       <style>{typewriterStyles}</style>
       <div className="bg-blue-600 text-white h-12 px-4 flex items-center justify-between rounded-t-xl">
         <h2 className="font-semibold text-sm sm:text-base lg:text-lg">
           Customer View
         </h2>
         <div className="flex items-center gap-2">
-          {statusInfo.icon}
-          <span className="text-xs font-medium text-blue-100">
-            {statusInfo.text}
-          </span>
+          <button
+            onClick={() => setShowConversationList(true)}
+            className="p-2 hover:bg-blue-700 rounded-full transition-colors text-white"
+            title="会话列表"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
         </div>
       </div>
 
@@ -302,6 +324,15 @@ export function Chat({
           </div>
         </div>
       </div>
+
+      {/* Conversation List */}
+      <ConversationList
+        isOpen={showConversationList}
+        onClose={() => setShowConversationList(false)}
+        onSelectConversation={handleConversationSelect}
+        currentConversationId={conversationId || null}
+        userId={parseInt(DEFAULT_USER_ID)}
+      />
     </div>
   );
 } 

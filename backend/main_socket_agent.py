@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Path
 from fastapi.responses import HTMLResponse
 import asyncio
 from agent.personal_assistant_manager import PersonalAssistantManager, PersonalAssistantContext
@@ -25,6 +25,10 @@ from agents import Handoff
 from pydantic import BaseModel
 from typing import List, Dict, Any
 from uuid import uuid4
+
+# 导入服务层
+from service.services.conversation_service import ConversationService
+from service.services.chat_message_service import ChatMessageService
 
 from core.web_socket_core import (
     connection_manager,
@@ -83,6 +87,9 @@ session_manager: Optional[AgentSessionManager] = None
 
 # 用户房间映射
 user_rooms: Dict[str, str] = {}
+
+# 用户会话映射
+user_conversations: Dict[str, str] = {}
 
 def initialize_context(user_id: int) -> PersonalAssistantContext:
     """初始化用户上下文"""
@@ -173,6 +180,19 @@ async def initialize_all_services():
         print(f"❌ 服务初始化失败: {e}")
         print("⚠️  应用将在有限功能下继续运行")
 
+def _get_guardrail_name(g) -> str:
+    """Extract a friendly guardrail name."""
+    name_attr = getattr(g, "name", None)
+    if isinstance(name_attr, str) and name_attr:
+        return name_attr
+    guard_fn = getattr(g, "guardrail_function", None)
+    if guard_fn is not None and hasattr(guard_fn, "__name__"):
+        return guard_fn.__name__.replace("_", " ").title()
+    fn_name = getattr(g, "__name__", None)
+    if isinstance(fn_name, str) and fn_name:
+        return fn_name.replace("_", " ").title()
+    return str(g)
+
 def _get_agent_by_name(name: str):
     """Return the agent object by name."""
     if assistant_manager is None:
@@ -212,8 +232,8 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str) -> 
         ctx = initialize_context(int(user_id))
         triage_agent = _get_agent_by_name("Triage Agent")
         
-        # 创建或获取会话 - 使用用户ID作为会话ID
-        conversation_id = f"user_{user_id}_conversation"
+        # 创建或获取会话 - 使用传入的会话ID或默认会话ID
+        conversation_id = user_conversations.get(user_id) or f"user_{user_id}_conversation"
         agent_session = await session_manager.get_session(conversation_id)
         
         if agent_session is None:
@@ -550,6 +570,27 @@ custom_message_handler = CustomMessageHandler(connection_manager)
 message_handlers: Dict[str, Any] = {}
 
 # =========================
+# 数据模型定义
+# =========================
+
+class ConversationListResponse(BaseModel):
+    """会话列表响应模型"""
+    success: bool
+    message: str
+    data: Optional[List[Dict[str, Any]]] = None
+    total: int = 0
+    user_id: int
+
+class ChatMessageResponse(BaseModel):
+    """聊天记录响应模型"""
+    success: bool
+    message: str
+    data: Optional[List[Dict[str, Any]]] = None
+    total: int = 0
+    conversation_id: str
+    conversation_info: Optional[Dict[str, Any]] = None
+
+# =========================
 # 启动时初始化
 # =========================
 @asynccontextmanager
@@ -862,7 +903,8 @@ async def websocket_endpoint(
     websocket: WebSocket,
     user_id: Optional[str] = Query(None, description="用户ID - 必需"),
     username: Optional[str] = Query(None, description="用户名"),
-    room_id: Optional[str] = Query(None, description="房间ID")
+    room_id: Optional[str] = Query(None, description="房间ID"),
+    conversation_id: Optional[str] = Query(None, description="会话ID")
 ):
     """
     WebSocket 主端点
@@ -883,6 +925,10 @@ async def websocket_endpoint(
         avatar=None,
         roles=["user"]
     )
+    
+    # 存储会话ID到全局映射
+    if conversation_id:
+        user_conversations[user_id] = conversation_id
     
     # 为用户创建单独的房间
     user_room_id = f"user_{user_id}_room"
@@ -1125,6 +1171,172 @@ async def get_rooms():
         "total": len(rooms),
         "rooms": rooms
     }
+
+
+@app.get("/api/conversations/{user_id}")
+async def get_user_conversations(
+    user_id: int = Path(..., description="用户ID"),
+    status: Optional[str] = Query(None, description="会话状态过滤（active/inactive/archived）"),
+    limit: int = Query(50, ge=1, le=100, description="返回数量限制"),
+    offset: int = Query(0, ge=0, description="偏移量")
+):
+    """
+    获取用户的会话列表
+    
+    Args:
+        user_id: 用户ID
+        status: 会话状态过滤（可选）
+        limit: 返回数量限制
+        offset: 偏移量
+        
+    Returns:
+        会话列表响应
+    """
+    try:
+        # 检查数据库客户端是否已初始化
+        if db_client is None:
+            raise HTTPException(status_code=500, detail="数据库未初始化")
+        
+        # 创建会话服务
+        conversation_service = ConversationService(db_client)
+        
+        # 获取用户会话列表
+        conversations = conversation_service.get_user_conversations(
+            user_id=user_id,
+            status=status,
+            limit=limit,
+            offset=offset
+        )
+        
+        # 转换为响应格式
+        conversations_data = []
+        for conv in conversations:
+            conversation_data = {
+                "id": conv.id,
+                "id_str": conv.id_str,
+                "user_id": conv.user_id,
+                "title": conv.title,
+                "description": conv.description,
+                "status": conv.status,
+                "last_active": conv.last_active.isoformat() if conv.last_active is not None else None,
+                "created_at": conv.created_at.isoformat() if conv.created_at is not None else None,
+                "updated_at": conv.updated_at.isoformat() if conv.updated_at is not None else None
+            }
+            conversations_data.append(conversation_data)
+        
+        # 获取总数统计
+        total_conversations = len(conversations)
+        
+        # 关闭服务
+        conversation_service.close()
+        
+        return ConversationListResponse(
+            success=True,
+            message=f"成功获取用户 {user_id} 的会话列表",
+            data=conversations_data,
+            total=total_conversations,
+            user_id=user_id
+        )
+        
+    except Exception as e:
+        logger.error(f"获取用户会话列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取会话列表失败: {str(e)}")
+
+
+@app.get("/api/conversations/{conversation_id_str}/messages")
+async def get_conversation_messages(
+    conversation_id_str: str = Path(..., description="会话ID字符串"),
+    limit: int = Query(50, ge=1, le=200, description="返回数量限制"),
+    offset: int = Query(0, ge=0, description="偏移量"),
+    order_desc: bool = Query(True, description="是否按创建时间倒序排列")
+):
+    """
+    获取会话的聊天记录
+    
+    Args:
+        conversation_id_str: 会话ID字符串
+        limit: 返回数量限制
+        offset: 偏移量
+        order_desc: 是否按创建时间倒序排列
+        
+    Returns:
+        聊天记录响应
+    """
+    try:
+        # 检查数据库客户端是否已初始化
+        if db_client is None:
+            raise HTTPException(status_code=500, detail="数据库未初始化")
+        
+        # 创建服务
+        conversation_service = ConversationService(db_client)
+        chat_message_service = ChatMessageService(db_client)
+        
+        # 验证会话是否存在
+        conversation = conversation_service.get_conversation_by_id_str(conversation_id_str)
+        if not conversation:
+            raise HTTPException(status_code=404, detail=f"会话 {conversation_id_str} 不存在")
+        
+        # 获取聊天记录
+        messages = chat_message_service.get_conversation_messages_by_id_str(
+            conversation_id_str=conversation_id_str,
+            limit=limit,
+            offset=offset,
+            order_desc=order_desc
+        )
+        
+        # 转换为响应格式
+        messages_data = []
+        for msg in messages:
+            message_data = {
+                "id": msg.id,
+                "conversation_id": msg.conversation_id,
+                "conversation_id_str": msg.conversation_id_str,
+                "sender_type": msg.sender_type,
+                "sender_id": msg.sender_id,
+                "content": msg.content,
+                "message_type": msg.message_type,
+                "status": msg.status,
+                "reply_to_id": msg.reply_to_id,
+                "extra_data": msg.extra_data,
+                "created_at": msg.created_at.isoformat() if msg.created_at is not None else None,
+                "updated_at": msg.updated_at.isoformat() if msg.updated_at is not None else None
+            }
+            messages_data.append(message_data)
+        
+        # 获取会话信息
+        conversation_info = {
+            "id": conversation.id,
+            "id_str": conversation.id_str,
+            "user_id": conversation.user_id,
+            "title": conversation.title,
+            "description": conversation.description,
+            "status": conversation.status,
+            "last_active": conversation.last_active.isoformat() if conversation.last_active is not None else None,
+            "created_at": conversation.created_at.isoformat() if conversation.created_at is not None else None,
+            "updated_at": conversation.updated_at.isoformat() if conversation.updated_at is not None else None
+        }
+        
+        # 获取总消息数
+        total_messages = len(messages)
+        
+        # 关闭服务
+        conversation_service.close()
+        chat_message_service.close()
+        
+        return ChatMessageResponse(
+            success=True,
+            message=f"成功获取会话 {conversation_id_str} 的聊天记录",
+            data=messages_data,
+            total=total_messages,
+            conversation_id=conversation_id_str,
+            conversation_info=conversation_info
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取会话聊天记录失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取聊天记录失败: {str(e)}")
 
 
 if __name__ == "__main__":

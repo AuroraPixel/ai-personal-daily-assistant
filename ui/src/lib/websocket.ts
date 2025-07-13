@@ -55,10 +55,13 @@ export class WebSocketService {
   // 连接状态
   private _status: WebSocketConnectionStatus = 'disconnected';
   
-  constructor(userId: string, username?: string) {
+  constructor(userId: string, username?: string, conversationId?: string) {
     this._userId = userId;
     this.username = username;
+    this._conversationId = conversationId;
   }
+  
+  private _conversationId?: string;
   
   get status(): WebSocketConnectionStatus {
     return this._status;
@@ -66,6 +69,14 @@ export class WebSocketService {
   
   get userId(): string {
     return this._userId;
+  }
+  
+  get conversationId(): string | undefined {
+    return this._conversationId;
+  }
+  
+  setConversationId(conversationId: string | null) {
+    this._conversationId = conversationId || undefined;
   }
   
   private setStatus(status: WebSocketConnectionStatus) {
@@ -92,6 +103,9 @@ export class WebSocketService {
       wsUrl.searchParams.set('user_id', this._userId);
       if (this.username) {
         wsUrl.searchParams.set('username', this.username);
+      }
+      if (this._conversationId) {
+        wsUrl.searchParams.set('conversation_id', this._conversationId);
       }
       
       // 如果是开发环境，使用固定端口
@@ -251,10 +265,14 @@ export class WebSocketService {
 // 创建全局WebSocket实例
 let wsService: WebSocketService | null = null;
 
-export function createWebSocketService(userId: string, username?: string): WebSocketService {
+export function createWebSocketService(userId: string, username?: string, conversationId?: string): WebSocketService {
   // 如果已存在服务且用户ID相同，返回现有服务
   if (wsService && wsService.userId === userId) {
     console.log('♻️ 复用现有WebSocket服务');
+    // 更新会话ID
+    if (conversationId !== undefined) {
+      wsService.setConversationId(conversationId);
+    }
     return wsService;
   }
   
@@ -264,8 +282,8 @@ export function createWebSocketService(userId: string, username?: string): WebSo
     wsService.disconnect();
   }
   
-  console.log('🆕 创建新的WebSocket服务:', { userId, username });
-  wsService = new WebSocketService(userId, username);
+  console.log('🆕 创建新的WebSocket服务:', { userId, username, conversationId });
+  wsService = new WebSocketService(userId, username, conversationId);
   return wsService;
 }
 

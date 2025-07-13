@@ -19,6 +19,8 @@ function App() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   // Loading state while awaiting assistant response
   const [isLoading, setIsLoading] = useState(false);
+  // History messages for conversation switching
+  const [conversationMessages, setConversationMessages] = useState<Record<string, Message[]>>({});
   // Mobile tab state
   const [activeTab, setActiveTab] = useState<'agent' | 'customer'>('agent');
   // WebSocket connection status
@@ -164,6 +166,92 @@ function App() {
       console.error('❌ WebSocket 服务在 App.tsx 中未找到');
     }
   }, []); // 空依赖数组确保只在挂载和卸载时执行
+
+  // Handle conversation selection
+  const handleSelectConversation = async (selectedConversationId: string) => {
+    try {
+      console.log('🔄 切换到会话:', selectedConversationId);
+      
+      // 保存当前会话的消息
+      if (conversationId) {
+        setConversationMessages(prev => ({
+          ...prev,
+          [conversationId]: messages
+        }));
+      }
+
+      // 如果选择新会话
+      if (selectedConversationId === 'new') {
+        setConversationId(null);
+        setMessages([]);
+        setEvents([]);
+        setStreamingResponse('');
+        setContext({});
+        setGuardrails([]);
+        setCurrentAgent('');
+        
+        // 重新连接WebSocket不带会话ID
+        const wsService = getWebSocketService();
+        if (wsService) {
+          wsService.setConversationId(null);
+          wsService.disconnect();
+          await wsService.connect();
+        }
+        return;
+      }
+
+      // 切换到指定会话
+      setConversationId(selectedConversationId);
+      
+      // 检查是否有缓存的消息
+      if (conversationMessages[selectedConversationId]) {
+        setMessages(conversationMessages[selectedConversationId]);
+      } else {
+        // 从后端获取会话历史
+        const apiUrl = `/api/conversations/${selectedConversationId}/messages?order_desc=true`;
+        
+        console.log('📡 获取会话历史:', apiUrl);
+        const response = await fetch(apiUrl);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('✅ 会话历史数据:', data);
+          
+          const historyMessages: Message[] = data.data?.reverse().map((msg: any) => ({
+            id: msg.id.toString(),
+            content: msg.content,
+            role: msg.sender_type === 'human' ? 'user' : 'assistant',
+            timestamp: new Date(msg.created_at)
+          })) || [];
+          
+          console.log('📝 转换后的历史消息:', historyMessages);
+          setMessages(historyMessages);
+          setConversationMessages(prev => ({
+            ...prev,
+            [selectedConversationId]: historyMessages
+          }));
+        } else {
+          const errorText = await response.text();
+          console.error('❌ 获取会话历史失败:', response.status, errorText);
+        }
+      }
+
+      // 重置其他状态
+      setEvents([]);
+      setStreamingResponse('');
+      setIsLoading(false);
+      
+      // 重新连接WebSocket带会话ID
+      const wsService = getWebSocketService();
+      if (wsService) {
+        wsService.setConversationId(selectedConversationId);
+        wsService.disconnect();
+        await wsService.connect();
+      }
+      
+    } catch (error) {
+      console.error('❌ 切换会话失败:', error);
+    }
+  };
 
   // Send a user message
   const handleSendMessage = async (content: string) => {
@@ -316,6 +404,8 @@ function App() {
               isLoading={isLoading}
               streamingResponse={streamingResponse}
               wsStatus={wsStatus}
+              conversationId={conversationId}
+              onSelectConversation={handleSelectConversation}
             />
           </ErrorBoundary>
         </div>
