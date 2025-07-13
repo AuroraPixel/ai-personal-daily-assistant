@@ -237,9 +237,9 @@ function App() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex w-full overflow-hidden">
         {/* Agent Panel */}
-        <div className={`${activeTab === 'agent' ? 'flex' : 'hidden'} md:flex md:w-1/2 h-full`}>
+        <div className={`${activeTab === 'agent' ? 'flex' : 'hidden'} md:flex flex-1 h-full`}>
           <AgentPanel
             agents={agents}
             currentAgent={currentAgent}
@@ -250,7 +250,7 @@ function App() {
         </div>
 
         {/* Customer Chat */}
-        <div className={`${activeTab === 'customer' ? 'flex' : 'hidden'} md:flex md:w-1/2 h-full`}>
+        <div className={`${activeTab === 'customer' ? 'flex' : 'hidden'} md:flex flex-1 h-full`}>
           <ErrorBoundary>
             <Chat
               messages={messages}
