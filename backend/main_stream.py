@@ -11,7 +11,42 @@ from core.database_core import DatabaseClient
 from typing import Optional
 from agents import Runner
 from openai.types.responses import ResponseTextDeltaEvent
-from agents.items import ItemHelpers
+from agents.items import ItemHelpers, MessageOutputItem, HandoffOutputItem, ToolCallItem, ToolCallOutputItem
+from agents import Handoff
+from pydantic import BaseModel
+from typing import List, Dict, Any
+from uuid import uuid4
+
+class MessageResponse(BaseModel):
+    content: str
+    agent: str
+
+
+class AgentEvent(BaseModel):
+    id: str
+    type: str
+    agent: str
+    content: str
+    metadata: Optional[Dict[str, Any]] = None
+    timestamp: Optional[float] = None
+
+class GuardrailCheck(BaseModel):
+    id: str
+    name: str
+    input: str
+    reasoning: str
+    passed: bool
+    timestamp: float
+
+class ChatResponse(BaseModel):
+    conversation_id: str
+    current_agent: str
+    messages: List[MessageResponse]
+    events: List[AgentEvent]
+    context: Dict[str, Any]
+    agents: List[Dict[str, Any]]
+    raw_response: str
+    guardrails: List[GuardrailCheck] = []
 
 # =========================
 # 全局变量
@@ -111,29 +146,155 @@ async def main():
         result = Runner.run_streamed(triage_agent, input="我明天想去巴黎游玩给出出行建议（自己转为经纬）", context=ctx)
         
         # 使用异步迭代器处理事件流
+        # 初始化一个ChatResponse对象
+        chat_response = ChatResponse(
+            conversation_id=uuid4().hex,
+            current_agent=triage_agent.name,
+            messages=[],
+            raw_response="",
+            events=[],
+            context=ctx.model_dump(),
+            agents=[],
+            guardrails=[]
+        )
+        
         async for event in result.stream_events():
-        # We'll ignore the raw responses event deltas
+            # Handle raw responses event deltas
             if event.type == "raw_response_event":
-                print(f"Raw response event: {event.data}")
+                print(f"Raw response event:{event.data}")
+                # 检查是否是 response.output_text.delta 类型
+                if hasattr(event.data, 'type') and event.data.type == 'response.output_text.delta':
+                    # 将 delta 内容追加到 raw_response 中
+                    if hasattr(event.data, 'delta') and event.data.delta:
+                        chat_response.raw_response += event.data.delta
+                        print(f"追加 delta 到 raw_response: '{event.data.delta}'")
+                        print(f"当前 raw_response: '{chat_response.raw_response}'")
+                print("\n=================\n")
                 continue
             # When the agent updates, print that
             elif event.type == "agent_updated_stream_event":
-                print(f"Agent updated: {event.new_agent.name}")
+                #print(f"Agent updated: {event.new_agent.name}")
+                # 更新current_agent
+                chat_response.current_agent = event.new_agent.name
+                print(f"更新后的ChatResponse: {chat_response.model_dump()}")
+                print("\n=================\n")
                 continue
             # When items are generated, print them
             elif event.type == "run_item_stream_event":
-                if event.item.type == "tool_call_item":
-                    print(f"-- Tool was called {event.item.agent.name}")
-                elif event.item.type == "tool_call_output_item":
-                    print(f"-- Tool output: {event.item.output}")
-                elif event.item.type == "message_output_item":
-                    print(f"-- Message output:\n {ItemHelpers.text_message_output(event.item)}")
+                item = event.item
+                
+                if isinstance(item, MessageOutputItem):
+                    # 处理消息输出项
+                    text = ItemHelpers.text_message_output(item)
+                    message_response = MessageResponse(content=text, agent=item.agent.name)
+                    chat_response.messages.append(message_response)
+                    
+                    agent_event = AgentEvent(
+                        id=uuid4().hex,
+                        type="message",
+                        agent=item.agent.name,
+                        content=text
+                    )
+                    chat_response.events.append(agent_event)
+                    #print(f"-- Message output:\n {text}")
+                    print(f"更新后的ChatResponse: {chat_response.model_dump()}")
+                    print("\n=================\n")
+                    
+                elif isinstance(item, HandoffOutputItem):
+                    # 处理移交输出项
+                    handoff_event = AgentEvent(
+                        id=uuid4().hex,
+                        type="handoff",
+                        agent=item.source_agent.name,
+                        content=f"{item.source_agent.name} -> {item.target_agent.name}",
+                        metadata={"source_agent": item.source_agent.name, "target_agent": item.target_agent.name}
+                    )
+                    chat_response.events.append(handoff_event)
+                    
+                    # 处理handoff回调
+                    from_agent = item.source_agent
+                    to_agent = item.target_agent
+                    ho = next(
+                        (h for h in getattr(from_agent, "handoffs", [])
+                         if isinstance(h, Handoff) and getattr(h, "agent_name", None) == to_agent.name),
+                        None,
+                    )
+                    if ho:
+                        fn = ho.on_invoke_handoff
+                        fv = fn.__code__.co_freevars
+                        cl = fn.__closure__ or []
+                        if "on_handoff" in fv:
+                            idx = fv.index("on_handoff")
+                            if idx < len(cl) and cl[idx].cell_contents:
+                                cb = cl[idx].cell_contents
+                                cb_name = getattr(cb, "__name__", repr(cb))
+                                callback_event = AgentEvent(
+                                    id=uuid4().hex,
+                                    type="tool_call",
+                                    agent=to_agent.name,
+                                    content=cb_name,
+                                )
+                                chat_response.events.append(callback_event)
+                    
+                    # 更新current_agent
+                    chat_response.current_agent = item.target_agent.name
+                    #print(f"-- Handoff: {item.source_agent.name} -> {item.target_agent.name}")
+                    print(f"更新后的ChatResponse: {chat_response.model_dump()}")
+                    print("\n=================\n")
+                    
+                elif isinstance(item, ToolCallItem):
+                    # 处理工具调用项
+                    tool_name = getattr(item.raw_item, "name", None)
+                    raw_args = getattr(item.raw_item, "arguments", None)
+                    tool_args: Any = raw_args
+                    if isinstance(raw_args, str):
+                        try:
+                            import json
+                            tool_args = json.loads(raw_args)
+                        except Exception:
+                            pass
+                    
+                    tool_call_event = AgentEvent(
+                        id=uuid4().hex,
+                        type="tool_call",
+                        agent=item.agent.name,
+                        content=tool_name or "",
+                        metadata={"tool_args": tool_args}
+                    )
+                    chat_response.events.append(tool_call_event)
+                    
+                    # 特殊处理display_seat_map
+                    if tool_name == "display_seat_map":
+                        seat_map_message = MessageResponse(
+                            content="DISPLAY_SEAT_MAP",
+                            agent=item.agent.name,
+                        )
+                        chat_response.messages.append(seat_map_message)
+                    
+                    #print(f"-- Tool was called: {tool_name} by {item.agent.name}")
+                    print(f"更新后的ChatResponse: {chat_response.model_dump()}")
+                    print("\n=================\n")
+                    
+                elif isinstance(item, ToolCallOutputItem):
+                    # 处理工具调用输出项
+                    tool_output_event = AgentEvent(
+                        id=uuid4().hex,
+                        type="tool_output",
+                        agent=item.agent.name,
+                        content=str(item.output),
+                        metadata={"tool_result": item.output}
+                    )
+                    chat_response.events.append(tool_output_event)
+                    #print(f"-- Tool output: {item.output}")
+                    print(f"更新后的ChatResponse: {chat_response.model_dump()}")
+                    print("\n=================\n")
+                    
                 else:
-                    print(f"-- Other event: {event.item.type}")
-                    pass 
-             # Ignore other event types
+                    print(f"-- Other event: {item.type}")
+                    
+            # Ignore other event types
 
-            print("=== Run complete ===")
+        print("=== Run complete ===")
                 
     except KeyboardInterrupt:
         print("\n\n⏹️  程序被用户中断")

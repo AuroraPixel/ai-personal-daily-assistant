@@ -195,7 +195,10 @@ class WebSocketConnectionManager:
         try:
             # 将消息转换为JSON格式 (Convert message to JSON format)
             message_data = message.model_dump()
-            await websocket.send_text(json.dumps(message_data, ensure_ascii=False))
+            # 确保datetime字段被正确序列化 (Ensure datetime fields are properly serialized)
+            if 'timestamp' in message_data and hasattr(message_data['timestamp'], 'isoformat'):
+                message_data['timestamp'] = message_data['timestamp'].isoformat()
+            await websocket.send_text(json.dumps(message_data, ensure_ascii=False, default=str))
             return True
         except Exception as e:
             logger.error(f"发送消息失败 (Failed to send message) {connection_id}: {e}")
