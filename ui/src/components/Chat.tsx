@@ -159,16 +159,16 @@ export function Chat({
   const statusInfo = getConnectionStatusInfo();
 
   return (
-    <div className="flex flex-col h-full flex-1 bg-white shadow-sm border border-gray-200 border-t-0 rounded-xl relative">
+    <div className="flex flex-col h-full flex-1 bg-white shadow-md border border-gray-300 border-t-0 rounded-xl relative">
       <style>{typewriterStyles}</style>
-      <div className="bg-blue-600 text-white h-12 px-4 flex items-center justify-between rounded-t-xl">
+      <div className="bg-blue-600 text-white h-12 px-4 flex items-center justify-between rounded-t-xl border-b border-blue-500">
         <h2 className="font-semibold text-sm sm:text-base lg:text-lg">
           Customer View
         </h2>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowConversationList(true)}
-            className="p-2 hover:bg-blue-700 rounded-full transition-colors text-white"
+            className="p-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-md transition-all duration-200 text-blue-100 hover:text-white"
             title="会话列表"
           >
             <Menu className="h-5 w-5" />
@@ -178,7 +178,7 @@ export function Chat({
 
       {/* Connection warning */}
       {wsStatus !== 'connected' && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mx-4 mt-2 rounded-r">
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mx-4 mt-2 rounded-r border border-yellow-200">
           <div className="flex items-center">
             <AlertCircle className="h-4 w-4 text-yellow-600 mr-2" />
             <span className="text-sm text-yellow-800">
@@ -201,11 +201,11 @@ export function Chat({
                 }`}
             >
               {msg.role === "user" ? (
-                <div className="ml-4 rounded-2xl rounded-br-md px-5 py-3 md:ml-24 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium max-w-[80%] shadow-lg transform hover:scale-[1.02] transition-all duration-200">
+                <div className="ml-4 rounded-2xl rounded-br-md px-5 py-3 md:ml-24 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium max-w-[80%] shadow-lg border border-blue-600 transform hover:scale-[1.02] transition-all duration-200">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
               ) : (
-                <div className="mr-4 rounded-2xl rounded-bl-md px-5 py-3 md:mr-24 text-gray-800 bg-gradient-to-r from-gray-100 to-gray-200 font-medium max-w-[80%] shadow-md border border-gray-200 transform hover:scale-[1.02] transition-all duration-200">
+                <div className="mr-4 rounded-2xl rounded-bl-md px-5 py-3 md:mr-24 text-gray-800 bg-gradient-to-r from-gray-50 to-gray-100 font-medium max-w-[80%] shadow-md border border-gray-300 transform hover:scale-[1.02] transition-all duration-200">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
               )}
@@ -290,10 +290,10 @@ export function Chat({
                         ? "连接断开，无法发送消息"
                         : "在这里输入您的消息..."
                     }
-                    className={`resize-none border-0 focus:outline-none text-sm px-2 py-3 rounded-lg transition-all duration-200 ${
+                    className={`resize-none border focus:outline-none text-sm px-2 py-3 rounded-lg transition-all duration-200 ${
                       wsStatus !== 'connected' 
-                        ? 'bg-gray-50 text-gray-400' 
-                        : 'bg-gray-50 hover:bg-gray-100 focus:bg-white text-gray-900 placeholder-gray-500'
+                        ? 'bg-gray-50 text-gray-400 border-gray-200' 
+                        : 'bg-gray-50 hover:bg-gray-100 focus:bg-white text-gray-900 placeholder-gray-500 border-gray-300 focus:border-blue-500'
                     }`}
                     style={{ minHeight: '44px', maxHeight: '120px' }}
                     value={inputText}
@@ -306,10 +306,10 @@ export function Chat({
                 </div>
                 <button
                   disabled={wsStatus !== 'connected' || !inputText.trim() || isSending}
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 border ${
                     wsStatus !== 'connected' || !inputText.trim() || isSending
-                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 hover:shadow-lg transform hover:scale-105 focus:ring-blue-300'
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed border-gray-300'
+                      : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 hover:shadow-lg transform hover:scale-105 focus:ring-blue-300 border-blue-600'
                   }`}
                   onClick={handleSend}
                 >

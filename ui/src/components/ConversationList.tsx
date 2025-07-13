@@ -147,16 +147,16 @@ export function ConversationList({
 
   return (
     <div className="absolute inset-0 z-50 bg-black bg-opacity-50 flex items-start justify-end">
-      <div className="bg-white w-80 h-full shadow-xl flex flex-col">
+      <div className="bg-white w-80 h-full shadow-xl flex flex-col border-l border-gray-300">
         {/* Header */}
-        <div className="bg-blue-600 text-white p-4 flex items-center justify-between">
+        <div className="bg-blue-600 text-white p-4 flex items-center justify-between border-b border-blue-500">
           <div className="flex items-center gap-2">
             <MessageSquare className="h-5 w-5" />
             <h2 className="font-semibold">会话列表</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-blue-700 rounded-full transition-colors"
+            className="p-1 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-md transition-all duration-200 text-blue-100 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
@@ -166,7 +166,7 @@ export function ConversationList({
         <div className="p-4 border-b border-gray-200">
           <button
             onClick={createNewConversation}
-            className="w-full flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors"
+            className="w-full flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors border border-blue-200 hover:border-blue-300"
           >
             <Plus className="h-4 w-4" />
             新建会话
@@ -193,7 +193,7 @@ export function ConversationList({
                 onClose();
               }}
               className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
-                currentConversationId === conversation.id_str ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+                currentConversationId === conversation.id_str ? 'bg-blue-50 border-l-4 border-l-blue-500 shadow-sm' : 'hover:shadow-sm'
               }`}
             >
               <div className="flex items-start justify-between">
