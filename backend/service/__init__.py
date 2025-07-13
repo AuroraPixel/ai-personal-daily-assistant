@@ -8,10 +8,14 @@ from .services.user_service import UserService
 from .services.preference_service import PreferenceService
 from .services.note_service import NoteService
 from .services.todo_service import TodoService
+from .services.conversation_service import ConversationService
+from .services.chat_message_service import ChatMessageService
 
 __all__ = [
     'UserService',
     'PreferenceService', 
     'NoteService',
-    'TodoService'
+    'TodoService',
+    'ConversationService',
+    'ChatMessageService'
 ] 
