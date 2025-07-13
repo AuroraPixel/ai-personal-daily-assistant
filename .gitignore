@@ -28,6 +28,8 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+!ui/src/lib
+
 # PyInstaller 文件 (PyInstaller)
 #  通常这些文件由 PyInstaller 生成，用于创建可执行文件
 #  Usually these files are written by a python script from a template
