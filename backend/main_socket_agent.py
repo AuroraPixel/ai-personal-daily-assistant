@@ -761,27 +761,45 @@ async def websocket_endpoint(
     logger.info(f"新的 WebSocket 连接请求: {connection_id}, 用户: {user_info}, 房间: {user_room_id}")
     
     try:
-        # 建立连接
+        # 检查用户是否已有连接，如果有则清理旧连接
+        existing_connections = await connection_manager.get_user_connections(user_id)
+        if existing_connections:
+            logger.info(f"用户 {user_id} 已有连接，清理旧连接: {existing_connections}")
+            for old_conn_id in existing_connections:
+                try:
+                    await connection_manager.disconnect(old_conn_id, code=1000)
+                except Exception as e:
+                    logger.warning(f"清理旧连接失败: {e}")
+        
+        # 建立新连接
         await connection_manager.connect(
             websocket=websocket,
             connection_id=connection_id,
             user_info=user_info
         )
         
-        # 创建用户房间
+        # 创建或获取用户房间
         from core.web_socket_core.models import RoomInfo
         user_room_info = RoomInfo(
             room_id=user_room_id,
             name=f"用户 {user_id} 的私人空间",
             description="用户专用聊天房间",
             created_by=user_id,
-            max_members=1,
+            max_members=5,  # 增加房间容量，允许多次连接
             is_private=True
         )
-        await connection_manager.create_room(user_room_info)
+        
+        # 尝试创建房间，如果已存在则忽略
+        room_created = await connection_manager.create_room(user_room_info)
+        if not room_created:
+            logger.info(f"房间已存在，直接加入: {user_room_id}")
         
         # 加入房间
-        await connection_manager.join_room(connection_id, user_room_id)
+        join_success = await connection_manager.join_room(connection_id, user_room_id)
+        if not join_success:
+            logger.error(f"加入房间失败: {user_room_id}")
+            await websocket.close(code=4002, reason="加入房间失败")
+            return
         
         # 发送连接成功消息
         welcome_message = WebSocketMessage(

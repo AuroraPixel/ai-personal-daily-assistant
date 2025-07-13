@@ -36,6 +36,22 @@ export function RunnerOutput({ runnerEvents }: RunnerOutputProps) {
     }
   };
 
+  const formatTimestamp = (timestamp: number | string | Date): string => {
+    try {
+      if (!timestamp) return '';
+      // 确保 timestamp 是一个 Date 对象
+      const date = new Date(timestamp);
+      // 检查转换后的日期是否有效
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+      }
+      return date.toLocaleTimeString();
+    } catch (error) {
+      console.error('Error formatting timestamp:', error);
+      return 'Time Error';
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -88,7 +104,7 @@ export function RunnerOutput({ runnerEvents }: RunnerOutputProps) {
               </div>
             </div>
             <div className="text-xs text-gray-400 mt-2">
-              {event.timestamp.toLocaleTimeString()}
+              {formatTimestamp(event.timestamp)}
             </div>
           </div>
         ))}

@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import { AgentPanel } from "./components/agent-panel";
 import { Chat } from "./components/Chat";
 import { DevPanel } from "./components/dev-panel";
+import ErrorBoundary from "./components/ErrorBoundary";
 import type { Agent, AgentEvent, GuardrailCheck, Message } from "./lib/types";
-import { callChatAPI } from "./lib/api";
-import { Bot, MessageCircle } from "lucide-react";
+
+import { createWebSocketService, getWebSocketService, type WebSocketConnectionStatus } from "./lib/websocket";
+import { DEFAULT_USER_ID, DEFAULT_USERNAME } from "./lib/config";
+import { Bot, MessageCircle, Wifi, WifiOff, RefreshCw, AlertTriangle } from "lucide-react";
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -18,39 +21,109 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   // Mobile tab state
   const [activeTab, setActiveTab] = useState<'agent' | 'customer'>('agent');
+  // WebSocket connection status
+  const [wsStatus, setWsStatus] = useState<WebSocketConnectionStatus>('disconnected');
+  // Real-time streaming response
+  const [streamingResponse, setStreamingResponse] = useState<string>('');
 
-  // Boot the conversation
+  // Setup WebSocket event listeners
   useEffect(() => {
-    (async () => {
-      const data = await callChatAPI("", conversationId ?? "");
-      if (data) {
-        setConversationId(data.conversation_id);
-        setCurrentAgent(data.current_agent);
-        setContext(data.context);
-        const initialEvents = (data.events || []).map((e: any) => ({
-          ...e,
-          timestamp: e.timestamp ?? Date.now(),
-        }));
-        setEvents(initialEvents);
-        setAgents(data.agents || []);
-        setGuardrails(data.guardrails || []);
-        if (Array.isArray(data.messages)) {
-          setMessages(
-            data.messages.map((m: any) => ({
+    console.log('🔗 App 组件已挂载，开始监听 WebSocket 事件...');
+    // 连接已在 main.tsx 中全局创建，这里只需获取实例并监听事件
+    const wsService = getWebSocketService();
+    
+    if (wsService) {
+      // 监听连接状态
+      const handleStatus = (status: WebSocketConnectionStatus) => {
+        console.log('📡 App.tsx 收到状态更新:', status);
+        setWsStatus(status);
+      };
+      
+      // 监听实时流式响应
+      const handleStreamingResponse = (content: any) => {
+        console.log('🔄 App.tsx 收到流式响应:', content);
+        
+        if (typeof content !== 'object' || content === null) {
+          console.warn('收到的 content 不是一个有效的对象:', content);
+          return;
+        }
+        
+        if (content.conversation_id && !conversationId) {
+          setConversationId(content.conversation_id);
+        }
+        
+        if (content.current_agent) {
+          setCurrentAgent(content.current_agent);
+        }
+        
+        if (content.context) {
+          setContext(content.context);
+        }
+        
+        if (content.events) {
+          const stamped = content.events.map((e: any) => ({
+            ...e,
+            timestamp: e.timestamp ?? Date.now(),
+          }));
+          setEvents((prev) => [...prev, ...stamped]);
+        }
+        
+        if (content.agents) {
+          setAgents(content.agents);
+        }
+        
+        if (content.guardrails) {
+          setGuardrails(content.guardrails);
+        }
+        
+        // 处理流式响应
+        if (typeof content.raw_response === 'string' && content.type !== 'completion') {
+          setStreamingResponse(content.raw_response);
+        }
+        
+        // 处理完成的消息
+        if (Array.isArray(content.messages) && content.type === 'completion') {
+          const newMessages: Message[] = content.messages
+            .filter((m: any) => m && typeof m.content === 'string' && typeof m.agent === 'string')
+            .map((m: any) => ({
               id: Date.now().toString() + Math.random().toString(),
               content: m.content,
               role: "assistant",
               agent: m.agent,
               timestamp: new Date(),
-            }))
-          );
+            }));
+          
+          if (newMessages.length > 0) {
+            setMessages((prev) => [...prev, ...newMessages]);
+          }
+          
+          setStreamingResponse('');
+          setIsLoading(false);
         }
-      }
-    })();
-  }, []);
+      };
+      
+      // 绑定事件
+      wsService.on('status', handleStatus);
+      wsService.on('ai_response', handleStreamingResponse);
+      
+      // 立即用当前状态更新一次UI
+      handleStatus(wsService.status);
+      
+      // 清理函数
+      return () => {
+        console.log('🧹 App 组件卸载，清理 WebSocket 事件监听器');
+        wsService.off('status', handleStatus);
+        wsService.off('ai_response', handleStreamingResponse);
+      };
+    } else {
+      console.error('❌ WebSocket 服务在 App.tsx 中未找到');
+    }
+  }, []); // 空依赖数组确保只在挂载和卸载时执行
 
   // Send a user message
   const handleSendMessage = async (content: string) => {
+    console.log('💬 用户发送消息:', content);
+    
     const userMsg: Message = {
       id: Date.now().toString(),
       content,
@@ -60,44 +133,113 @@ function App() {
 
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
+    setStreamingResponse('');
 
-    const data = await callChatAPI(content, conversationId ?? "");
-
-    if (data) {
-      if (!conversationId) setConversationId(data.conversation_id);
-      setCurrentAgent(data.current_agent);
-      setContext(data.context);
-      if (data.events) {
-        const stamped = data.events.map((e: any) => ({
-          ...e,
-          timestamp: e.timestamp ?? Date.now(),
-        }));
-        setEvents((prev) => [...prev, ...stamped]);
+    try {
+      const wsService = getWebSocketService();
+      if (wsService && wsService.status === 'connected') {
+        console.log('📤 通过WebSocket发送消息');
+        wsService.sendChatMessage(content);
+      } else {
+        console.error('❌ WebSocket未连接，无法发送消息');
+        setIsLoading(false);
+        return;
       }
-      if (data.agents) setAgents(data.agents);
-      // Update guardrails state
-      if (data.guardrails) setGuardrails(data.guardrails);
-
-      if (data.messages) {
-        const responses: Message[] = data.messages.map((m: any) => ({
-          id: Date.now().toString() + Math.random().toString(),
-          content: m.content,
-          role: "assistant",
-          agent: m.agent,
-          timestamp: new Date(),
-        }));
-        setMessages((prev) => [...prev, ...responses]);
-      }
+    } catch (error) {
+      console.error('❌ 发送消息失败:', error);
+      setIsLoading(false);
     }
+  };
 
-    setIsLoading(false);
+  // WebSocket status indicator
+  const getStatusIcon = () => {
+    switch (wsStatus) {
+      case 'connected':
+        return <Wifi className="h-4 w-4 text-green-500" />;
+      case 'connecting':
+        return <RefreshCw className="h-4 w-4 text-yellow-500 animate-spin" />;
+      case 'error':
+        return <AlertTriangle className="h-4 w-4 text-red-500" />;
+      case 'disconnected':
+      default:
+        return <WifiOff className="h-4 w-4 text-red-500" />;
+    }
+  };
+
+  const getStatusText = () => {
+    switch (wsStatus) {
+      case 'connected':
+        return '已连接';
+      case 'connecting':
+        return '连接中...';
+      case 'error':
+        return '连接错误';
+      case 'disconnected':
+      default:
+        return '连接断开';
+    }
+  };
+
+  const getStatusColor = () => {
+    switch (wsStatus) {
+      case 'connected':
+        return 'text-green-600';
+      case 'connecting':
+        return 'text-yellow-600';
+      case 'error':
+        return 'text-red-600';
+      case 'disconnected':
+      default:
+        return 'text-red-600';
+    }
   };
 
   return (
-    <div className="relative w-full h-screen">
-      <main className="flex w-full gap-2 bg-gray-100 p-2 h-full md:h-full">
-        {/* 桌面端：并排显示 */}
-        <div className="hidden md:flex w-full gap-2">
+    <div className="h-screen bg-gray-100 flex flex-col">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Bot className="h-6 w-6 text-blue-600" />
+          <h1 className="text-xl font-bold text-gray-800">
+            AI Personal Assistant
+          </h1>
+        </div>
+        
+        {/* WebSocket Status */}
+        <div className="flex items-center gap-2">
+          {getStatusIcon()}
+          <span className={`text-sm font-medium ${getStatusColor()}`}>
+            {getStatusText()}
+          </span>
+        </div>
+      </div>
+
+      {/* Mobile Tab Bar */}
+      <div className="md:hidden bg-white border-b border-gray-200 flex">
+        <button
+          onClick={() => setActiveTab('agent')}
+          className={`flex-1 py-3 px-4 text-sm font-medium flex items-center justify-center gap-2 ${
+            activeTab === 'agent' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-600'
+          }`}
+        >
+          <Bot className="h-4 w-4" />
+          Agent Panel
+        </button>
+        <button
+          onClick={() => setActiveTab('customer')}
+          className={`flex-1 py-3 px-4 text-sm font-medium flex items-center justify-center gap-2 ${
+            activeTab === 'customer' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-600'
+          }`}
+        >
+          <MessageCircle className="h-4 w-4" />
+          Customer View
+        </button>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Agent Panel */}
+        <div className={`${activeTab === 'agent' ? 'flex' : 'hidden'} md:flex md:w-1/2 h-full`}>
           <AgentPanel
             agents={agents}
             currentAgent={currentAgent}
@@ -105,65 +247,21 @@ function App() {
             guardrails={guardrails}
             context={context}
           />
-          <Chat
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            isLoading={isLoading}
-          />
         </div>
 
-        {/* 移动端：根据标签页显示对应内容 */}
-        <div className="md:hidden w-full pb-16">
-          {activeTab === 'agent' ? (
-            <AgentPanel
-              agents={agents}
-              currentAgent={currentAgent}
-              events={events}
-              guardrails={guardrails}
-              context={context}
-            />
-          ) : (
+        {/* Customer Chat */}
+        <div className={`${activeTab === 'customer' ? 'flex' : 'hidden'} md:flex md:w-1/2 h-full`}>
+          <ErrorBoundary>
             <Chat
               messages={messages}
               onSendMessage={handleSendMessage}
               isLoading={isLoading}
+              streamingResponse={streamingResponse}
+              wsStatus={wsStatus}
             />
-          )}
-        </div>
-      </main>
-
-      {/* 移动端底部标签页导航 */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-200/50 shadow-lg">
-        <div className="flex items-center justify-center px-4 py-2">
-          <div className="flex bg-gray-100/80 rounded-full p-1">
-            <button
-              onClick={() => setActiveTab('agent')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
-                activeTab === 'agent'
-                  ? 'bg-white text-gray-800 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Bot className="h-4 w-4" />
-              <span className="hidden sm:inline">Agent</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('customer')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
-                activeTab === 'customer'
-                  ? 'bg-white text-gray-800 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <MessageCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Customer</span>
-            </button>
-          </div>
+          </ErrorBoundary>
         </div>
       </div>
-      
-      {/* 开发测试面板 */}
-      <DevPanel onSendMessage={handleSendMessage} />
     </div>
   );
 }
