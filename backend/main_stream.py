@@ -7,6 +7,8 @@ AI 个人日常助手 - 主程序 (AI Personal Daily Assistant - Main Program)
 
 import asyncio
 from agent.personal_assistant_manager import PersonalAssistantManager, PersonalAssistantContext
+# 导入会话管理器
+from agent.agent_session import AgentSessionManager
 from core.database_core import DatabaseClient
 from typing import Optional
 from agents import Runner
@@ -55,9 +57,11 @@ class ChatResponse(BaseModel):
 db_client: Optional[DatabaseClient] = None
 # 个人助手管理器
 assistant_manager: Optional[PersonalAssistantManager] = None
+# 会话管理器
+session_manager: Optional[AgentSessionManager] = None
 
-# 消息管理器
-session: Optional[MessageSession] = None
+# 消息管理器（暂时不使用）
+# session: Optional[MessageSession] = None
 
 
 def initialize_context(user_id: int) -> PersonalAssistantContext:
@@ -80,7 +84,7 @@ def initialize_context(user_id: int) -> PersonalAssistantContext:
 # =========================
 async def initialize_all_services():
     """初始化所有服务"""
-    global db_client, assistant_manager
+    global db_client, assistant_manager, session_manager
     
     try:
         print("🚀 开始初始化所有服务...")
@@ -102,6 +106,15 @@ async def initialize_all_services():
         # 3. 初始化管理器
         print("⚙️  正在初始化管理器...")
         success = await assistant_manager.initialize()
+        
+        # 4. 创建会话管理器
+        print("💬 正在创建会话管理器...")
+        session_manager = AgentSessionManager(
+            db_client=db_client,
+            default_user_id=1,
+            max_messages=100
+        )
+        print("✅ 会话管理器初始化完成")
         
         if success:
             print("🎉 所有服务初始化完成")
@@ -138,20 +151,50 @@ def _get_agent_by_name(name: str):
 
 
 async def main():
-    print("�� 正在启动AI个人日常助手...")
+    print("🎯 正在启动AI个人日常助手...")
     
     try:
         await initialize_all_services()
         ctx = initialize_context(1)
         triage_agent = _get_agent_by_name("Triage Agent")
         
-        # 处理流式响应
-        result = Runner.run_streamed(triage_agent, input="我明天想去巴黎游玩给出出行建议（自己转为经纬）", context=ctx)
+        # 创建或获取会话
+        if session_manager is None:
+            print("❌ 会话管理器未初始化")
+            return
+            
+        conversation_id = "0e859409cec64b9db21e9d603ee7c680"
+        agent_session = await session_manager.get_session(conversation_id)
+        
+        if agent_session is None:
+            print("❌ 无法创建或获取会话")
+            return
+        
+        # 设置会话上下文
+        agent_session.set_context(ctx)
+        agent_session.set_current_agent(triage_agent.name)
+        
+        # 用户消息
+        user_message = "我刚刚询问了什么？"
+        
+        # 保存用户消息到会话
+        await agent_session.save_message(user_message, "user")
+        
+        # 获取完整的会话历史（包含新添加的用户消息）
+        session_state = agent_session.get_state()
+        input_items = session_state.get("input_items", [])
+        
+        print(f"🔄 会话历史消息数量: {len(input_items)}")
+        for i, item in enumerate(input_items):
+            print(f"  {i+1}. [{item.get('role', 'unknown')}]: {item.get('content', '')[:50]}{'...' if len(item.get('content', '')) > 50 else ''}")
+        
+        # 处理流式响应，传入完整的会话历史
+        result = Runner.run_streamed(triage_agent, input=input_items, context=ctx)
         
         # 使用异步迭代器处理事件流
         # 初始化一个ChatResponse对象
         chat_response = ChatResponse(
-            conversation_id=uuid4().hex,
+            conversation_id=conversation_id,
             current_agent=triage_agent.name,
             messages=[],
             raw_response="",
@@ -160,6 +203,9 @@ async def main():
             agents=[],
             guardrails=[]
         )
+        
+        # 用于收集助手回复的内容
+        assistant_messages = []
         
         async for event in result.stream_events():
             # Handle raw responses event deltas
@@ -191,6 +237,9 @@ async def main():
                     text = ItemHelpers.text_message_output(item)
                     message_response = MessageResponse(content=text, agent=item.agent.name)
                     chat_response.messages.append(message_response)
+                    
+                    # 保存助手消息到会话
+                    assistant_messages.append(text)
                     
                     agent_event = AgentEvent(
                         id=uuid4().hex,
@@ -298,6 +347,31 @@ async def main():
             # Ignore other event types
 
         print("=== Run complete ===")
+        
+        # 保存助手的完整回复到会话
+        full_assistant_response = ""
+        if assistant_messages:
+            full_assistant_response = "\n".join(assistant_messages)
+            await agent_session.save_message(full_assistant_response, "assistant")
+            print(f"✅ 已保存助手回复到会话: {conversation_id}")
+        
+        # 更新会话状态
+        final_state = {
+            "input_items": [
+                {"content": user_message, "role": "user"},
+                {"content": full_assistant_response, "role": "assistant"}
+            ] if assistant_messages else [{"content": user_message, "role": "user"}],
+            "context": ctx,
+            "current_agent": chat_response.current_agent
+        }
+        
+        await session_manager.save(conversation_id, final_state)
+        print(f"✅ 已保存会话状态到数据库")
+        
+        # 显示会话信息
+        conversation_info = agent_session.get_conversation_info()
+        if conversation_info:
+            print(f"💬 会话信息: {conversation_info['title']} (消息数: {conversation_info['message_count']})")
                 
     except KeyboardInterrupt:
         print("\n\n⏹️  程序被用户中断")
@@ -308,6 +382,15 @@ async def main():
     finally:
         # 基本的资源清理
         print("\n🏁 程序结束")
+        
+        # 关闭会话管理器
+        if session_manager is not None:
+            try:
+                session_manager.close()
+                print("✅ 会话管理器已关闭")
+            except Exception as session_cleanup_error:
+                print(f"⚠️  关闭会话管理器时发生错误: {session_cleanup_error}")
+        
         if db_client is not None:
             try:
                 db_client.close()

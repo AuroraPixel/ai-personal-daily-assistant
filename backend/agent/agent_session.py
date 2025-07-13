@@ -460,14 +460,16 @@ class AgentSessionManager:
     替代main.py中的InMemoryConversationStore，提供数据库持久化功能
     """
     
-    def __init__(self, default_user_id: int = 1, max_messages: int = 100):
+    def __init__(self, db_client: DatabaseClient, default_user_id: int = 1, max_messages: int = 100):
         """
         初始化会话管理器
         
         Args:
+            db_client: 数据库客户端
             default_user_id: 默认用户ID
             max_messages: 每个会话的最大消息数量
         """
+        self.db_client = db_client
         self.default_user_id = default_user_id
         self.max_messages = max_messages
         self._sessions: Dict[str, AgentSession] = {}
@@ -494,7 +496,8 @@ class AgentSessionManager:
         session = AgentSession(
             conversation_id_str=conversation_id,
             user_id=self.default_user_id,
-            max_messages=self.max_messages
+            db_client=self.db_client,
+            max_messages=self.max_messages,
         )
         
         # 初始化会话
@@ -574,7 +577,8 @@ class AgentSessionManager:
             session = AgentSession(
                 conversation_id_str=conversation_id,
                 user_id=self.default_user_id,
-                max_messages=self.max_messages
+                db_client=self.db_client,
+                max_messages=self.max_messages,
             )
             
             success = await session.initialize(title)
@@ -687,15 +691,16 @@ class SyncAgentSessionManager:
     为了与main.py的现有代码兼容，提供同步接口
     """
     
-    def __init__(self, default_user_id: int = 1, max_messages: int = 100):
+    def __init__(self, db_client: DatabaseClient, default_user_id: int = 1, max_messages: int = 100):
         """
         初始化同步会话管理器
         
         Args:
+            db_client: 数据库客户端
             default_user_id: 默认用户ID
             max_messages: 每个会话的最大消息数量
         """
-        self.async_manager = AgentSessionManager(default_user_id, max_messages)
+        self.async_manager = AgentSessionManager(db_client, default_user_id, max_messages)
         self._loop = None
     
     def _run_async(self, coro):

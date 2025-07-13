@@ -18,7 +18,7 @@ chromadb==1.0.15
 numpy>=1.26.0
 openai>=1.0.0
 # Add required dependencies for the newer version of ChromaDB
-duckdb<0.10.4
+#duckdb<0.10.4
 pyarrow
 pydantic<3
 # bcrypt is needed for newer Chroma versions
