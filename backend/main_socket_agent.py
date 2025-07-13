@@ -14,6 +14,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Quer
 from fastapi.responses import HTMLResponse
 import asyncio
 from agent.personal_assistant_manager import PersonalAssistantManager, PersonalAssistantContext
+# 导入会话管理器
+from agent.agent_session import AgentSessionManager
 from core.database_core import DatabaseClient
 from typing import Optional
 from agents import Runner
@@ -78,6 +80,8 @@ class ChatResponse(BaseModel):
 db_client: Optional[DatabaseClient] = None
 # 个人助手管理器
 assistant_manager: Optional[PersonalAssistantManager] = None
+# 会话管理器
+session_manager: Optional[AgentSessionManager] = None
 
 # 用户房间映射
 user_rooms: Dict[str, str] = {}
@@ -102,7 +106,7 @@ def initialize_context(user_id: int) -> PersonalAssistantContext:
 # =========================
 async def initialize_all_services():
     """初始化所有服务"""
-    global db_client, assistant_manager
+    global db_client, assistant_manager, session_manager
     
     try:
         print("🚀 开始初始化所有服务...")
@@ -124,6 +128,15 @@ async def initialize_all_services():
         # 3. 初始化管理器
         print("⚙️  正在初始化管理器...")
         success = await assistant_manager.initialize()
+        
+        # 4. 创建会话管理器
+        print("💬 正在创建会话管理器...")
+        session_manager = AgentSessionManager(
+            db_client=db_client,
+            default_user_id=1,
+            max_messages=100
+        )
+        print("✅ 会话管理器初始化完成")
         
         if success:
             print("🎉 所有服务初始化完成")
@@ -164,16 +177,45 @@ def _get_agent_by_name(name: str):
 async def handle_stream_chat(user_id: str, message: str, connection_id: str) -> None:
     """处理流式聊天消息"""
     try:
+        # 检查会话管理器是否初始化
+        if session_manager is None:
+            logger.error("会话管理器未初始化")
+            return
+        
         # 初始化用户上下文
         ctx = initialize_context(int(user_id))
         triage_agent = _get_agent_by_name("Triage Agent")
         
-        # 处理流式响应
-        result = Runner.run_streamed(triage_agent, input=message, context=ctx)
+        # 创建或获取会话 - 使用用户ID作为会话ID
+        conversation_id = f"user_{user_id}_conversation"
+        agent_session = await session_manager.get_session(conversation_id)
+        
+        if agent_session is None:
+            logger.error(f"无法创建或获取会话: {conversation_id}")
+            return
+        
+        # 设置会话上下文
+        agent_session.set_context(ctx)
+        agent_session.set_current_agent(triage_agent.name)
+        
+        # 保存用户消息到会话
+        await agent_session.save_message(message, "user")
+        
+        # 获取完整的会话历史（包含新添加的用户消息）
+        session_state = agent_session.get_state()
+        input_items = session_state.get("input_items", [])
+        
+        logger.info(f"🔄 用户 {user_id} 会话历史消息数量: {len(input_items)}")
+        for i, item in enumerate(input_items):
+            logger.debug(f"  {i+1}. [{item.get('role', 'unknown')}]: {item.get('content', '')[:50]}{'...' if len(item.get('content', '')) > 50 else ''}")
+        
+        # 处理流式响应，传入完整的会话历史
+        print(f"🔄 用户 {user_id} 会话历史消息: {input_items}")
+        result = Runner.run_streamed(triage_agent, input=input_items, context=ctx)
         
         # 初始化一个ChatResponse对象
         chat_response = ChatResponse(
-            conversation_id=uuid4().hex,
+            conversation_id=conversation_id,
             current_agent=triage_agent.name,
             messages=[],
             raw_response="",
@@ -182,6 +224,9 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str) -> 
             agents=[],
             guardrails=[]
         )
+        
+        # 用于收集助手回复的内容
+        assistant_messages = []
         
         # 获取用户房间ID
         room_id = user_rooms.get(user_id)
@@ -233,6 +278,9 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str) -> 
                     text = ItemHelpers.text_message_output(item)
                     message_response = MessageResponse(content=text, agent=item.agent.name)
                     chat_response.messages.append(message_response)
+                    
+                    # 保存助手消息到会话
+                    assistant_messages.append(text)
                     
                     agent_event = AgentEvent(
                         id=uuid4().hex,
@@ -361,6 +409,31 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str) -> 
                     )
                     await connection_manager.send_to_connection(connection_id, response_message)
                     
+        # 保存助手的完整回复到会话
+        full_assistant_response = ""
+        if assistant_messages:
+            full_assistant_response = "\n".join(assistant_messages)
+            await agent_session.save_message(full_assistant_response, "assistant")
+            logger.info(f"✅ 已保存助手回复到会话: {conversation_id}")
+        
+        # 更新会话状态
+        final_state = {
+            "input_items": [
+                {"content": message, "role": "user"},
+                {"content": full_assistant_response, "role": "assistant"}
+            ] if assistant_messages else [{"content": message, "role": "user"}],
+            "context": ctx,
+            "current_agent": chat_response.current_agent
+        }
+        
+        await session_manager.save(conversation_id, final_state)
+        logger.info(f"✅ 已保存会话状态到数据库")
+        
+        # 显示会话信息
+        conversation_info = agent_session.get_conversation_info()
+        if conversation_info:
+            logger.info(f"💬 会话信息: {conversation_info['title']} (消息数: {conversation_info['message_count']})")
+        
         # 发送完成消息
         completion_message = WebSocketMessage(
             type=MessageType.AI_RESPONSE,
@@ -377,6 +450,19 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str) -> 
         
     except Exception as e:
         logger.error(f"流式聊天处理错误: {e}")
+        
+        # 尝试保存错误信息到会话（如果会话存在）
+        try:
+            if session_manager is not None:
+                conversation_id = f"user_{user_id}_conversation"
+                agent_session = await session_manager.get_session(conversation_id)
+                if agent_session is not None:
+                    error_info = f"处理错误: {str(e)}"
+                    await agent_session.save_message(error_info, "assistant")
+                    logger.info(f"✅ 已保存错误信息到会话: {conversation_id}")
+        except Exception as save_error:
+            logger.error(f"保存错误信息到会话失败: {save_error}")
+        
         # 发送错误消息
         error_message = WebSocketMessage(
             type=MessageType.AI_ERROR,
@@ -467,6 +553,22 @@ async def lifespan(app: FastAPI):
             await connection_manager.heartbeat_task
         except asyncio.CancelledError:
             pass
+    
+    # 关闭会话管理器
+    if session_manager is not None:
+        try:
+            session_manager.close()
+            logger.info("✅ 会话管理器已关闭")
+        except Exception as session_cleanup_error:
+            logger.error(f"⚠️  关闭会话管理器时发生错误: {session_cleanup_error}")
+    
+    # 关闭数据库连接
+    if db_client is not None:
+        try:
+            db_client.close()
+            logger.info("✅ 数据库连接已关闭")
+        except Exception as db_cleanup_error:
+            logger.error(f"⚠️  关闭数据库连接时发生错误: {db_cleanup_error}")
     
     logger.info("WebSocket 服务已关闭")
 
