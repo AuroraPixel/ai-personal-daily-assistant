@@ -56,6 +56,9 @@ db_client: Optional[DatabaseClient] = None
 # 个人助手管理器
 assistant_manager: Optional[PersonalAssistantManager] = None
 
+# 消息管理器
+session: Optional[MessageSession] = None
+
 
 def initialize_context(user_id: int) -> PersonalAssistantContext:
     """初始化用户上下文"""
