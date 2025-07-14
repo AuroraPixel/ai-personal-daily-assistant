@@ -164,7 +164,7 @@ export function Chat({
       <style>{typewriterStyles}</style>
       <div className="bg-blue-600 text-white h-12 px-4 flex items-center justify-between rounded-t-xl border-b border-blue-500">
         <h2 className="font-semibold text-sm sm:text-base lg:text-lg">
-          Customer View
+        Assistant View
         </h2>
         <div className="flex items-center gap-2">
           <button

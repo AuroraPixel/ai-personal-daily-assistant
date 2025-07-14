@@ -561,7 +561,7 @@ const Dashboard: React.FC = () => {
                />
              </div>
 
-             {/* 右侧聊天区域 - Customer View (60%) */}
+             {/* 右侧聊天区域 - Assistant View (60%) */}
              <div className="w-3/5 flex flex-col">
                <Chat
                  messages={messages}
