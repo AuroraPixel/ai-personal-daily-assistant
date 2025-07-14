@@ -146,6 +146,27 @@ const Dashboard: React.FC = () => {
           // 流式响应更新 - 只更新流式响应文本，不更新消息列表
           console.log('🔄 流式响应更新:', content);
           
+          // 检查流式响应中是否包含错误
+          if (content.is_error) {
+            console.error('🔄 流式响应中包含错误:', content.error_message);
+            
+            // 创建错误消息并添加到消息列表
+            const errorMessage: Message = {
+              id: `error-${Date.now()}-${Math.random()}`,
+              content: `系统异常: ${content.error_message}`,
+              type: 'ai',
+              agent: content.current_agent || 'System',
+              timestamp: new Date(),
+            };
+            
+            setMessages(prev => [...prev, errorMessage]);
+            
+            // 重置状态
+            setStreamingResponse('');
+            setIsLoading(false);
+            return;
+          }
+          
           // 更新流式响应文本
           if (content.raw_response) {
             setStreamingResponse(content.raw_response);
@@ -194,6 +215,27 @@ const Dashboard: React.FC = () => {
           if (response.current_agent) {
             console.log('💬 聊天响应中更新当前代理:', response.current_agent);
             setCurrentAgent(response.current_agent);
+          }
+          
+          // 检查是否是错误响应
+          if (response.is_error) {
+            console.error('💬 收到错误响应:', response.error_message);
+            
+            // 创建错误消息并添加到消息列表
+            const errorMessage: Message = {
+              id: `error-${Date.now()}-${Math.random()}`,
+              content: `系统异常: ${response.error_message}`,
+              type: 'ai',
+              agent: response.current_agent || 'System',
+              timestamp: new Date(),
+            };
+            
+            setMessages(prev => [...prev, errorMessage]);
+            
+            // 重置loading状态
+            setIsLoading(false);
+            setStreamingResponse('');
+            return;
           }
           
           if (response.messages && Array.isArray(response.messages)) {

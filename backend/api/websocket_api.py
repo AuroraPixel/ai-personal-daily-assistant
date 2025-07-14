@@ -85,6 +85,8 @@ class ChatResponse(BaseModel):
     raw_response: str
     guardrails: List[GuardrailCheck] = []
     is_finished: bool = False
+    is_error: bool = False
+    error_message: str = ""
 
 # =========================
 # 全局变量（从main中移过来的）
@@ -187,9 +189,6 @@ async def _process_stream_with_concurrent_handling(
     将流式处理进一步细化，减少阻塞时间，提高并发性能
     """
     try:
-        # 启动流式处理
-        result = Runner.run_streamed(agent, input=input_items, context=context)
-        
         # 初始化响应对象
         chat_response = ChatResponse(
             conversation_id=conversation_id,
@@ -201,6 +200,39 @@ async def _process_stream_with_concurrent_handling(
             agents=_build_agents_list(),
             guardrails=[]
         )
+        
+        # 启动流式处理
+        try:
+            result = Runner.run_streamed(agent, input=input_items, context=context)
+        except Exception as runner_error:
+            logger.error(f"❌ 用户 {user_id} Runner.run_streamed 失败: {runner_error}")
+            
+            # 设置错误状态
+            chat_response.is_error = True
+            chat_response.error_message = str(runner_error)
+            chat_response.is_finished = True
+            
+            # 直接发送错误响应
+            room_id = f"user_{user_id}_room"
+            error_message = WebSocketMessage(
+                type=MessageType.AI_RESPONSE,
+                content={
+                    "type": "completion",
+                    "final_response": chat_response.model_dump(),
+                    "message": "AI处理启动失败"
+                },
+                sender_id="system",
+                receiver_id=None,
+                room_id=room_id
+            )
+            
+            try:
+                await connection_manager.send_to_connection(connection_id, error_message)
+                logger.info(f"✅ 用户 {user_id} Runner错误消息已发送")
+            except Exception as send_error:
+                logger.error(f"❌ 用户 {user_id} 发送Runner错误消息失败: {send_error}")
+            
+            return
         
         # 用于收集助手回复的内容
         assistant_messages = []
@@ -275,28 +307,99 @@ async def _process_stream_with_concurrent_handling(
             
         except Exception as stream_error:
             logger.error(f"❌ 用户 {user_id} 流式处理错误: {stream_error}")
-            # 发送错误消息
+            
+            # 设置错误状态到ChatResponse
+            chat_response.is_error = True
+            chat_response.error_message = str(stream_error)
+            chat_response.is_finished = True
+            
+            # 直接发送错误响应，不依赖可能已失败的队列
             error_message = WebSocketMessage(
-                type=MessageType.AI_ERROR,
-                content={"error": "流式处理过程中发生错误", "details": str(stream_error)},
+                type=MessageType.AI_RESPONSE,
+                content={
+                    "type": "completion",
+                    "final_response": chat_response.model_dump(),
+                    "message": "处理过程中发生错误"
+                },
                 sender_id="system",
                 receiver_id=None,
                 room_id=room_id
             )
-            await response_queue.put(error_message)
-            await response_queue.put(None)
-            await db_save_queue.put(None)
+            
+            # 直接使用connection_manager发送，确保错误消息能到达前端
+            try:
+                await connection_manager.send_to_connection(connection_id, error_message)
+                logger.info(f"✅ 用户 {user_id} 错误消息已发送")
+            except Exception as send_error:
+                logger.error(f"❌ 用户 {user_id} 发送错误消息失败: {send_error}")
+            
+            # 停止队列处理
+            try:
+                await response_queue.put(None)
+                await db_save_queue.put(None)
+                
+                # 等待并发任务完成或取消
+                await asyncio.gather(response_sender_task, db_saver_task, return_exceptions=True)
+            except Exception as cleanup_error:
+                logger.error(f"❌ 用户 {user_id} 清理并发任务失败: {cleanup_error}")
             
         finally:
-            # 确保清理任务
-            if not response_sender_task.done():
+            # 确保清理任务（检查任务是否存在）
+            tasks_to_cleanup = []
+            if 'response_sender_task' in locals() and not response_sender_task.done():
                 response_sender_task.cancel()
-            if not db_saver_task.done():
+                tasks_to_cleanup.append(response_sender_task)
+            if 'db_saver_task' in locals() and not db_saver_task.done():
                 db_saver_task.cancel()
+                tasks_to_cleanup.append(db_saver_task)
+                
+            # 再次尝试等待任务结束
+            if tasks_to_cleanup:
+                try:
+                    await asyncio.gather(*tasks_to_cleanup, return_exceptions=True)
+                    logger.debug(f"✅ 用户 {user_id} 并发任务已清理")
+                except Exception as final_cleanup_error:
+                    logger.error(f"❌ 用户 {user_id} 最终清理失败: {final_cleanup_error}")
                 
     except Exception as e:
         logger.error(f"❌ 用户 {user_id} 并发流式处理失败: {e}")
-        raise
+        
+        # 创建错误响应
+        error_chat_response = ChatResponse(
+            conversation_id=conversation_id,
+            current_agent=agent.name if agent else "Unknown",
+            messages=[],
+            raw_response="",
+            events=[],
+            context=context.model_dump() if context else {},
+            agents=_build_agents_list(),
+            guardrails=[],
+            is_error=True,
+            error_message=str(e),
+            is_finished=True
+        )
+        
+        # 发送错误消息
+        room_id = f"user_{user_id}_room"
+        error_message = WebSocketMessage(
+            type=MessageType.AI_RESPONSE,
+            content={
+                "type": "completion",
+                "final_response": error_chat_response.model_dump(),
+                "message": "系统处理失败"
+            },
+            sender_id="system",
+            receiver_id=None,
+            room_id=room_id
+        )
+        
+        try:
+            await connection_manager.send_to_connection(connection_id, error_message)
+            logger.info(f"✅ 用户 {user_id} 外层错误消息已发送")
+        except Exception as send_error:
+            logger.error(f"❌ 用户 {user_id} 发送外层错误消息失败: {send_error}")
+        
+        # 不要再抛出异常，避免上层再次处理
 
 
 async def _concurrent_response_sender(response_queue: asyncio.Queue, connection_id: str):
@@ -495,9 +598,29 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
             logger.debug(f"✅ 用户 {user_id} 会话管理器已获取（缓存优化）")
         except Exception as e:
             logger.error(f"获取会话管理器失败: {e}")
+            
+            # 创建错误的ChatResponse
+            error_chat_response = ChatResponse(
+                conversation_id=f"user_{user_id}_conversation",
+                current_agent="System",
+                messages=[],
+                raw_response="",
+                events=[],
+                context={},
+                agents=[],
+                guardrails=[],
+                is_error=True,
+                error_message=str(e),
+                is_finished=True
+            )
+            
             error_message = WebSocketMessage(
-                type=MessageType.AI_ERROR,
-                content={"error": "获取会话管理器失败", "details": str(e)},
+                type=MessageType.AI_RESPONSE,
+                content={
+                    "type": "completion",
+                    "final_response": error_chat_response.model_dump(),
+                    "message": "获取会话管理器失败"
+                },
                 sender_id="system",
                 receiver_id=None,
                 room_id=f"user_{str(user_id)}_room"
@@ -513,9 +636,29 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
             logger.debug(f"✅ 用户 {user_id} 上下文已获取（缓存优化）")
         except Exception as e:
             logger.error(f"获取用户上下文失败: {e}")
+            
+            # 创建错误的ChatResponse
+            error_chat_response = ChatResponse(
+                conversation_id=f"user_{user_id}_conversation",
+                current_agent="System",
+                messages=[],
+                raw_response="",
+                events=[],
+                context={},
+                agents=[],
+                guardrails=[],
+                is_error=True,
+                error_message=str(e),
+                is_finished=True
+            )
+            
             error_message = WebSocketMessage(
-                type=MessageType.AI_ERROR,
-                content={"error": "获取用户上下文失败", "details": str(e)},
+                type=MessageType.AI_RESPONSE,
+                content={
+                    "type": "completion",
+                    "final_response": error_chat_response.model_dump(),
+                    "message": "获取用户上下文失败"
+                },
                 sender_id="system",
                 receiver_id=None,
                 room_id=f"user_{str(user_id)}_room"
@@ -528,9 +671,29 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
             logger.debug(f"✅ 用户 {user_id} Triage Agent已获取（单例复用）")
         except Exception as e:
             logger.error(f"获取Triage Agent失败: {e}")
+            
+            # 创建错误的ChatResponse
+            error_chat_response = ChatResponse(
+                conversation_id=f"user_{user_id}_conversation",
+                current_agent="System",
+                messages=[],
+                raw_response="",
+                events=[],
+                context={},
+                agents=[],
+                guardrails=[],
+                is_error=True,
+                error_message=str(e),
+                is_finished=True
+            )
+            
             error_message = WebSocketMessage(
-                type=MessageType.AI_ERROR,
-                content={"error": "获取AI代理失败", "details": str(e)},
+                type=MessageType.AI_RESPONSE,
+                content={
+                    "type": "completion",
+                    "final_response": error_chat_response.model_dump(),
+                    "message": "获取AI代理失败"
+                },
                 sender_id="system",
                 receiver_id=None,
                 room_id=f"user_{str(user_id)}_room"
@@ -548,9 +711,29 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
             agent_session = await session_manager.get_session(conversation_id)
             if agent_session is None:
                 logger.error(f"无法创建或获取会话: {conversation_id}")
+                
+                # 创建错误的ChatResponse
+                error_chat_response = ChatResponse(
+                    conversation_id=conversation_id,
+                    current_agent="System",
+                    messages=[],
+                    raw_response="",
+                    events=[],
+                    context={},
+                    agents=[],
+                    guardrails=[],
+                    is_error=True,
+                    error_message=f"无法创建会话: {conversation_id}",
+                    is_finished=True
+                )
+                
                 error_message = WebSocketMessage(
-                    type=MessageType.AI_ERROR,
-                    content={"error": "无法创建会话", "details": f"会话ID: {conversation_id}"},
+                    type=MessageType.AI_RESPONSE,
+                    content={
+                        "type": "completion",
+                        "final_response": error_chat_response.model_dump(),
+                        "message": "无法创建会话"
+                    },
                     sender_id="system",
                     receiver_id=None,
                     room_id=f"user_{str(user_id)}_room"
@@ -559,9 +742,29 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
                 return
         except Exception as e:
             logger.error(f"创建或获取会话时发生错误: {e}")
+            
+            # 创建错误的ChatResponse
+            error_chat_response = ChatResponse(
+                conversation_id=conversation_id,
+                current_agent="System",
+                messages=[],
+                raw_response="",
+                events=[],
+                context={},
+                agents=[],
+                guardrails=[],
+                is_error=True,
+                error_message=str(e),
+                is_finished=True
+            )
+            
             error_message = WebSocketMessage(
-                type=MessageType.AI_ERROR,
-                content={"error": "创建会话失败", "details": str(e)},
+                type=MessageType.AI_RESPONSE,
+                content={
+                    "type": "completion",
+                    "final_response": error_chat_response.model_dump(),
+                    "message": "创建会话失败"
+                },
                 sender_id="system",
                 receiver_id=None,
                 room_id=f"user_{str(user_id)}_room"
@@ -601,9 +804,29 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
             
         except Exception as e:
             logger.error(f"启动流式处理失败: {e}")
+            
+            # 创建错误的ChatResponse
+            error_chat_response = ChatResponse(
+                conversation_id=conversation_id,
+                current_agent="System",
+                messages=[],
+                raw_response="",
+                events=[],
+                context={},
+                agents=_build_agents_list(),
+                guardrails=[],
+                is_error=True,
+                error_message=str(e),
+                is_finished=True
+            )
+            
             error_message = WebSocketMessage(
-                type=MessageType.AI_ERROR,
-                content={"error": "启动AI处理失败", "details": str(e)},
+                type=MessageType.AI_RESPONSE,
+                content={
+                    "type": "completion",
+                    "final_response": error_chat_response.model_dump(),
+                    "message": "启动AI处理失败"
+                },
                 sender_id="system",
                 receiver_id=None,
                 room_id=f"user_{str(user_id)}_room"
@@ -620,7 +843,7 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
         # 尝试保存错误信息到会话（如果会话存在）
         try:
             error_session_manager = get_session_manager_for_user(int(user_id))
-            conversation_id = f"user_{user_id}_conversation"
+            conversation_id = user_conversations.get(user_id) or f"user_{user_id}_conversation"
             agent_session = await error_session_manager.get_session(conversation_id)
             if agent_session is not None:
                 error_info = f"处理错误: {str(e)}"
@@ -629,12 +852,28 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
         except Exception as save_error:
             logger.error(f"保存错误信息到会话失败: {save_error}")
         
-        # 发送错误消息
+        # 创建错误的ChatResponse
+        error_chat_response = ChatResponse(
+            conversation_id=user_conversations.get(user_id) or f"user_{user_id}_conversation",
+            current_agent="System",
+            messages=[],
+            raw_response="",
+            events=[],
+            context={},
+            agents=_build_agents_list(),
+            guardrails=[],
+            is_error=True,
+            error_message=str(e),
+            is_finished=True
+        )
+        
+        # 发送错误响应，使用AI_RESPONSE类型以便前端正确处理
         error_message = WebSocketMessage(
-            type=MessageType.AI_ERROR,
+            type=MessageType.AI_RESPONSE,
             content={
-                "error": "流式处理失败",
-                "details": str(e)
+                "type": "completion",
+                "final_response": error_chat_response.model_dump(),
+                "message": "流式处理失败"
             },
             sender_id="system",
             receiver_id=None,

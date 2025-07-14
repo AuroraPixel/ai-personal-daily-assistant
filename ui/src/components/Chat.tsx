@@ -217,7 +217,11 @@ export function Chat({
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
               ) : (
-                <div className="mr-4 rounded-2xl rounded-bl-md px-5 py-3 md:mr-24 text-gray-800 bg-gradient-to-r from-gray-50 to-gray-100 font-medium max-w-[80%] shadow-md border border-gray-300 transform hover:scale-[1.02] transition-all duration-200">
+                <div className={`mr-4 rounded-2xl rounded-bl-md px-5 py-3 md:mr-24 font-medium max-w-[80%] shadow-md border transform hover:scale-[1.02] transition-all duration-200 ${
+                  msg.content.startsWith('系统异常:') 
+                    ? 'text-red-800 bg-gradient-to-r from-red-50 to-red-100 border-red-300' 
+                    : 'text-gray-800 bg-gradient-to-r from-gray-50 to-gray-100 border-gray-300'
+                }`}>
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
               )}
@@ -236,14 +240,28 @@ export function Chat({
         )}
         {streamingResponse && (
           <div className="flex mb-6 text-sm justify-start">
-            <div className="mr-4 rounded-2xl rounded-bl-md px-5 py-3 md:mr-24 text-gray-800 bg-gradient-to-r from-blue-50 to-blue-100 font-medium max-w-[80%] shadow-md border border-blue-200 transform hover:scale-[1.02] transition-all duration-200">
-              <div className="text-xs text-blue-600 font-semibold mb-2 flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                AI 正在回复...
+            <div className={`mr-4 rounded-2xl rounded-bl-md px-5 py-3 md:mr-24 font-medium max-w-[80%] shadow-md border transform hover:scale-[1.02] transition-all duration-200 ${
+              streamingResponse.startsWith('系统异常:')
+                ? 'text-red-800 bg-gradient-to-r from-red-50 to-red-100 border-red-200'
+                : 'text-gray-800 bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200'
+            }`}>
+              <div className={`text-xs font-semibold mb-2 flex items-center gap-2 ${
+                streamingResponse.startsWith('系统异常:')
+                  ? 'text-red-600'
+                  : 'text-blue-600'
+              }`}>
+                <div className={`w-2 h-2 rounded-full animate-pulse ${
+                  streamingResponse.startsWith('系统异常:')
+                    ? 'bg-red-500'
+                    : 'bg-blue-500'
+                }`}></div>
+                {streamingResponse.startsWith('系统异常:') ? '系统错误' : 'AI 正在回复...'}
               </div>
               <div className="typewriter-content">
                 <ReactMarkdown>{streamingResponse}</ReactMarkdown>
-                <span className="typewriter-cursor inline-block w-0.5 h-4 bg-blue-500 ml-1"></span>
+                {!streamingResponse.startsWith('系统异常:') && (
+                  <span className="typewriter-cursor inline-block w-0.5 h-4 bg-blue-500 ml-1"></span>
+                )}
               </div>
             </div>
           </div>
