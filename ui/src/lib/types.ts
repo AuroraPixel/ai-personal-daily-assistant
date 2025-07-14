@@ -22,7 +22,7 @@ export type EventType = "message" | "handoff" | "tool_call" | "tool_output" | "c
 
 export interface AgentEvent {
   id: string
-  type: 'tool_call' | 'handoff' | 'context_update' | 'error'
+  type: 'tool_call' | 'handoff' | 'context_update' | 'error' | 'message'
   agent: string
   content: string
   timestamp: Date

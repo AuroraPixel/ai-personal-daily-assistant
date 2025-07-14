@@ -164,7 +164,7 @@ class AuthUtils:
     @staticmethod
     def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
         """
-        用户认证
+        用户认证（优化版本，使用缓存）
         
         Args:
             username: 用户名
@@ -177,27 +177,63 @@ class AuthUtils:
         if password != "admin123456":
             return None
         
-        # 从user_service获取用户信息
-        from service.services.user_service import UserService
-        user_service = UserService()
-        
-        # 尝试通过用户名查找用户
-        users = user_service.search_users_by_name(username)
-        if not users:
-            # 如果按名称找不到，尝试按邮箱查找
-            users = user_service.search_users_by_email(username)
-        
-        if not users:
-            return None
-        
-        # 取第一个匹配的用户
-        user = users[0]
-        return {
-            "user_id": str(user.id),
-            "username": user.username,
-            "email": user.email,
-            "name": user.name
-        }
+        # 使用全局服务管理器获取缓存的用户信息
+        try:
+            from core.service_manager import service_manager
+            
+            # 使用缓存的用户信息查找
+            user_info = service_manager.get_user_cached(
+                user_id=username,  # 使用用户名作为缓存key的一部分
+                username=username
+            )
+            
+            if user_info:
+                return user_info
+            
+            # 如果缓存中没有找到，回退到原始方法
+            from service.services.user_service import UserService
+            user_service = UserService()
+            
+            # 尝试通过用户名查找用户
+            users = user_service.search_users_by_name(username)
+            if not users:
+                # 如果按名称找不到，尝试按邮箱查找
+                users = user_service.search_users_by_email(username)
+            
+            if not users:
+                return None
+            
+            # 取第一个匹配的用户
+            user = users[0]
+            return {
+                "user_id": str(user.id),
+                "username": user.username,
+                "email": user.email,
+                "name": user.name
+            }
+            
+        except Exception as e:
+            # 如果优化版本出错，回退到原始方法
+            from service.services.user_service import UserService
+            user_service = UserService()
+            
+            # 尝试通过用户名查找用户
+            users = user_service.search_users_by_name(username)
+            if not users:
+                # 如果按名称找不到，尝试按邮箱查找
+                users = user_service.search_users_by_email(username)
+            
+            if not users:
+                return None
+            
+            # 取第一个匹配的用户
+            user = users[0]
+            return {
+                "user_id": str(user.id),
+                "username": user.username,
+                "email": user.email,
+                "name": user.name
+            }
 
 
 class AuthService:
@@ -244,7 +280,7 @@ class AuthService:
     
     def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
         """
-        验证令牌
+        验证令牌（优化版本，使用缓存）
         
         Args:
             token: JWT令牌字符串
@@ -252,7 +288,13 @@ class AuthService:
         Returns:
             用户信息字典或None
         """
-        return AuthUtils.get_current_user_from_token(token)
+        try:
+            # 使用服务管理器的缓存验证
+            from core.service_manager import service_manager
+            return service_manager.verify_token_cached(token)
+        except Exception:
+            # 如果缓存验证失败，回退到原始方法
+            return AuthUtils.get_current_user_from_token(token)
     
     def refresh_token(self, token: str) -> Optional[Token]:
         """

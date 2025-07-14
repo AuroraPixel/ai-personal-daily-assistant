@@ -3,7 +3,6 @@ import { useAppDispatch, useAppSelector } from "../store/hooks";
 import { logout } from "../store/slices/authSlice";
 import { AgentPanel } from "../components/agent-panel";
 import { Chat } from "../components/Chat";
-import { DevPanel } from "../components/dev-panel";
 
 import ErrorBoundary from "../components/ErrorBoundary";
 import type { Agent, AgentEvent, GuardrailCheck, Message } from "../lib/types";
@@ -23,7 +22,7 @@ const Dashboard: React.FC = () => {
   const [context, setContext] = useState<Record<string, any>>({});
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [conversationMessages, setConversationMessages] = useState<Record<string, Message[]>>({});
+  // 移除不必要的对话消息缓存（简化状态管理）
   const [activeTab, setActiveTab] = useState<'agent' | 'customer'>('agent');
   const [wsStatus, setWsStatus] = useState<WebSocketConnectionStatus>('disconnected');
   const [streamingResponse, setStreamingResponse] = useState<string>('');
@@ -95,6 +94,15 @@ const Dashboard: React.FC = () => {
         setStreamingResponse('');
       };
       
+      // 监听会话切换确认事件
+      const handleConversationSwitched = (content: any) => {
+        console.log('✅ 会话切换确认:', content);
+        const newConversationId = content.conversation_id;
+        if (newConversationId) {
+          setConversationId(newConversationId);
+        }
+      };
+      
       // 监听AI错误事件
       const handleAIError = (content: any) => {
         console.error('❌ AI处理错误:', content);
@@ -115,7 +123,7 @@ const Dashboard: React.FC = () => {
         }
         
         // 处理流式响应 - 修复：直接使用content作为ChatResponse对象
-        if (content.type === 'completion') {
+        if (content.type === 'completion' || content.is_finished) {
           // 流式响应完成
           console.log('✅ 流式响应完成:', content);
           setStreamingResponse('');
@@ -124,9 +132,12 @@ const Dashboard: React.FC = () => {
           // 处理最终响应
           if (content.final_response) {
             handleChatResponse(content.final_response);
+          } else {
+            // 如果没有final_response，直接使用当前content作为最终响应
+            handleChatResponse(content);
           }
         } else {
-          // 流式响应更新 - content本身就是ChatResponse对象
+          // 流式响应更新 - 只更新流式响应文本，不更新消息列表
           console.log('🔄 流式响应更新:', content);
           
           // 更新流式响应文本
@@ -134,7 +145,7 @@ const Dashboard: React.FC = () => {
             setStreamingResponse(content.raw_response);
           }
           
-          // 实时更新其他状态
+          // 实时更新会话ID和当前代理
           if (content.conversation_id) {
             setConversationId(content.conversation_id);
           }
@@ -143,17 +154,8 @@ const Dashboard: React.FC = () => {
             setCurrentAgent(content.current_agent);
           }
           
-          if (content.messages && Array.isArray(content.messages)) {
-            const newMessages = content.messages.map((msg: any) => ({
-              id: `${Date.now()}-${Math.random()}`,
-              content: msg.content,
-              type: msg.agent === 'user' ? 'user' : 'ai',
-              agent: msg.agent,
-              timestamp: new Date(),
-            }));
-            setMessages(newMessages);
-          }
-          
+          // 流式响应期间不更新消息列表，避免同时显示
+          // 只更新其他状态信息
           if (content.events && Array.isArray(content.events)) {
             setEvents(content.events);
           }
@@ -193,15 +195,27 @@ const Dashboard: React.FC = () => {
               agent: msg.agent,
               timestamp: new Date(),
             }));
-            setMessages(newMessages);
             
-            // 更新会话消息记录
-            if (response.conversation_id) {
-              setConversationMessages(prev => ({
-                ...prev,
-                [response.conversation_id]: newMessages
-              }));
-            }
+            // 不要直接替换消息列表，而是智能合并
+            // 如果响应中包含完整的会话历史，使用它
+            // 如果只包含新的AI响应，则添加到现有消息后面
+            setMessages(prev => {
+              // 检查是否有新的AI消息需要添加
+              const lastMessage = prev[prev.length - 1];
+              const aiMessages = newMessages.filter((msg: Message) => msg.type === 'ai');
+              
+              if (aiMessages.length > 0 && lastMessage && lastMessage.type === 'user') {
+                // 如果最后一条是用户消息，且响应中有AI消息，则添加AI消息
+                console.log('添加AI响应到现有消息列表');
+                return [...prev, ...aiMessages];
+              } else {
+                // 否则使用完整的消息列表（可能是会话历史）
+                console.log('使用完整的消息列表');
+                return newMessages;
+              }
+            });
+            
+            // 会话消息记录已简化，不再需要缓存
           }
           
           if (response.events && Array.isArray(response.events)) {
@@ -238,6 +252,7 @@ const Dashboard: React.FC = () => {
       wsService.on('ai_thinking', handleStreamingResponse);
       wsService.on('ai_finished', handleStreamingResponse);
       wsService.on('chat_response', handleChatResponse);
+      wsService.on('conversation_switched', handleConversationSwitched);
       
       // 建立连接
       console.log('🔌 开始建立WebSocket连接...');
@@ -265,6 +280,7 @@ const Dashboard: React.FC = () => {
         wsService.off('ai_thinking', handleStreamingResponse);
         wsService.off('ai_finished', handleStreamingResponse);
         wsService.off('chat_response', handleChatResponse);
+        wsService.off('conversation_switched', handleConversationSwitched);
       };
     } else {
       console.error('❌ 无法创建WebSocket服务');
@@ -280,13 +296,16 @@ const Dashboard: React.FC = () => {
     // 获取或创建WebSocket服务
     const wsService = getWebSocketService();
     if (wsService) {
-      wsService.setConversationId(selectedConversationId);
-      
-      // 如果有缓存的消息，直接使用
-      if (conversationMessages[selectedConversationId]) {
-        setMessages(conversationMessages[selectedConversationId]);
-        return;
+      // 通过WebSocket发送会话切换消息（不再重新连接）
+      if (wsService.status === 'connected') {
+        console.log('🔄 发送会话切换消息:', selectedConversationId);
+        wsService.switchConversation(selectedConversationId);
+      } else {
+        // 如果未连接，先设置会话ID，连接后会自动使用
+        wsService.setConversationId(selectedConversationId);
       }
+      
+      // 简化：总是重新加载会话消息（移除缓存逻辑）
       
       // 否则重新获取消息
       setMessages([]);
@@ -317,12 +336,6 @@ const Dashboard: React.FC = () => {
           
           // 设置消息
           setMessages(historyMessages);
-          
-          // 缓存消息
-          setConversationMessages(prev => ({
-            ...prev,
-            [selectedConversationId]: historyMessages
-          }));
           
           console.log('✅ 成功获取历史消息:', historyMessages.length, '条');
         } else {
@@ -509,13 +522,6 @@ const Dashboard: React.FC = () => {
                  onSelectConversation={handleSelectConversation}
                />
              </div>
-
-             {/* 右侧开发面板 */}
-             <div className="w-80 bg-white border-l border-gray-200">
-               <DevPanel
-                 onSendMessage={handleSendMessage}
-               />
-             </div>
           </div>
 
           {/* 移动端布局 */}
@@ -572,6 +578,8 @@ const Dashboard: React.FC = () => {
              </div>
           </div>
         </div>
+
+
 
       </div>
     </ErrorBoundary>

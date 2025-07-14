@@ -4,6 +4,7 @@ export interface WebSocketMessage {
   sender_id?: string;
   receiver_id?: string;
   room_id?: string;
+  conversation_id?: string;
   timestamp?: string;
 }
 
@@ -225,12 +226,42 @@ export class WebSocketService {
   
   // 发送聊天消息
   sendChatMessage(content: string) {
-    console.log('💬 发送聊天消息:', content);
-    this.send({
+    console.log('💬 发送聊天消息:', content, '会话ID:', this._conversationId);
+    
+    const message: WebSocketMessage = {
       type: 'chat',
       content: content,
       timestamp: new Date().toISOString()
-    });
+    };
+    
+    // 如果有会话ID，添加到消息的metadata中
+    if (this._conversationId) {
+      message.conversation_id = this._conversationId;
+      // 也添加到metadata中以便后端处理
+      (message as any).metadata = {
+        conversation_id: this._conversationId
+      };
+    }
+    
+    this.send(message);
+  }
+  
+  // 发送会话切换消息
+  switchConversation(conversationId: string) {
+    console.log('🔄 切换会话:', conversationId);
+    
+    const message: WebSocketMessage = {
+      type: 'switch_conversation',
+      content: {
+        conversation_id: conversationId
+      },
+      timestamp: new Date().toISOString()
+    };
+    
+    this.send(message);
+    
+    // 立即更新本地会话ID
+    this._conversationId = conversationId;
   }
   
   // 处理接收到的消息
@@ -256,6 +287,15 @@ export class WebSocketService {
       case 'connected':
         console.log('🎉 连接成功消息:', content);
         this.emit('connected', content);
+        break;
+      case 'notification':
+        console.log('📢 通知消息:', content);
+        // 检查是否是会话切换确认消息
+        if (content && content.type === 'conversation_switched') {
+          console.log('✅ 会话切换成功:', content.conversation_id);
+          this.emit('conversation_switched', content);
+        }
+        this.emit('notification', content);
         break;
       case 'error':
         console.error('❌ 服务器错误:', content);
@@ -328,10 +368,7 @@ export function createWebSocketService(userId: string, username?: string, conver
   // 如果已存在服务且用户ID相同，返回现有服务
   if (wsService && wsService.userId === userId) {
     console.log('♻️ 复用现有WebSocket服务');
-    // 更新会话ID
-    if (conversationId !== undefined) {
-      wsService.setConversationId(conversationId);
-    }
+    // 不在这里更新会话ID，而是通过专门的方法处理
     return wsService;
   }
   

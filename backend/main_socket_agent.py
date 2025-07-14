@@ -47,6 +47,9 @@ from service.services.chat_message_service import ChatMessageService
 from core.auth import auth_service, Token, AuthUtils
 from core.middleware import CurrentUser, CurrentUserOptional, get_current_user, get_current_user_optional
 
+# 导入服务管理器
+from core.service_manager import service_manager
+
 from core.web_socket_core import (
     connection_manager,
     WebSocketMessageHandler,
@@ -102,10 +105,7 @@ assistant_manager: Optional[PersonalAssistantManager] = None
 # 会话管理器
 session_manager: Optional[AgentSessionManager] = None
 
-# 用户房间映射
-user_rooms: Dict[str, str] = {}
-
-# 用户会话映射
+# 用户会话映射（保留全局状态跟踪）
 user_conversations: Dict[str, str] = {}
 
 def initialize_context(user_id: int) -> PersonalAssistantContext:
@@ -155,31 +155,37 @@ def _build_agents_list() -> List[Dict[str, Any]]:
 # 初始化函数
 # =========================
 async def initialize_all_services():
-    """初始化所有服务"""
+    """初始化所有服务（优化版本）"""
     global db_client, assistant_manager, session_manager
     
     try:
         print("🚀 开始初始化所有服务...")
         
-        # 1. 初始化数据库客户端
-        print("📁 正在初始化数据库客户端...")
-        db_client = DatabaseClient()
-        db_client.initialize()
-        db_client.create_tables()
-        print("✅ 数据库客户端初始化完成")
+        # 1. 初始化服务管理器
+        print("⚙️  正在初始化服务管理器...")
+        if not service_manager.initialize():
+            raise Exception("服务管理器初始化失败")
+        print("✅ 服务管理器初始化完成")
         
-        # 2. 创建个人助手管理器
+        # 2. 获取共享的数据库客户端
+        print("📁 正在获取数据库客户端...")
+        db_client = service_manager.get_db_client()
+        if not db_client:
+            raise Exception("数据库客户端获取失败")
+        print("✅ 数据库客户端获取完成")
+        
+        # 3. 创建个人助手管理器
         print("🤖 正在创建个人助手管理器...")
         assistant_manager = PersonalAssistantManager(
             db_client=db_client,
             mcp_server_url="http://localhost:8002/mcp"
         )
         
-        # 3. 初始化管理器
+        # 4. 初始化管理器
         print("⚙️  正在初始化管理器...")
         success = await assistant_manager.initialize()
         
-        # 4. 创建会话管理器
+        # 5. 创建会话管理器
         print("💬 正在创建会话管理器...")
         session_manager = AgentSessionManager(
             db_client=db_client,
@@ -246,7 +252,7 @@ def _get_agent_by_name(name: str):
 # =========================
 # 流式处理函数
 # =========================
-async def handle_stream_chat(user_id: str, message: str, connection_id: str, authenticated_user: Optional[Dict[str, Any]] = None) -> None:
+async def handle_stream_chat(user_id: str, message: str, connection_id: str, authenticated_user: Optional[Dict[str, Any]] = None, conversation_id: Optional[str] = None) -> None:
     """处理流式聊天消息"""
     try:
         # 检查服务是否初始化
@@ -305,8 +311,12 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
             await connection_manager.send_to_connection(connection_id, error_message)
             return
         
-        # 创建或获取会话 - 使用传入的会话ID或默认会话ID
-        conversation_id = user_conversations.get(user_id) or uuid4().hex
+        # 创建或获取会话 - 优先使用传入的会话ID，其次使用用户映射中的会话ID，最后生成新的
+        if not conversation_id:
+            conversation_id = user_conversations.get(user_id) or uuid4().hex
+        
+        # 更新用户会话映射
+        user_conversations[user_id] = conversation_id
         try:
             agent_session = await session_manager.get_session(conversation_id)
             if agent_session is None:
@@ -653,8 +663,71 @@ class CustomMessageHandler(WebSocketMessageHandler):
         if isinstance(message_content, dict):
             message_content = message_content.get("message", "")
         
+        # 获取会话ID（从消息metadata中获取）
+        conversation_id = message.metadata.get("conversation_id") if message.metadata else None
+        
         # 启动流式处理
-        await handle_stream_chat(user_id, str(message_content), connection_id, authenticated_user)
+        await handle_stream_chat(user_id, str(message_content), connection_id, authenticated_user, conversation_id)
+    
+    async def handle_switch_conversation(self, connection_id: str, message: WebSocketMessage, authenticated_user: Optional[Dict[str, Any]] = None):
+        """处理会话切换消息"""
+        logger.info(f"处理会话切换消息: {connection_id}")
+        
+        # 获取发送者信息
+        conn_info = await self.connection_manager.get_connection_info(connection_id)
+        if not conn_info or not conn_info.user_info:
+            # 发送错误消息
+            error_message = WebSocketMessage(
+                type=MessageType.ERROR,
+                content={"error": "未认证用户无法切换会话"},
+                sender_id="system",
+                receiver_id=None,
+                room_id=None,
+                timestamp=datetime.utcnow()
+            )
+            await self.connection_manager.send_to_connection(connection_id, error_message)
+            return
+
+        # 获取用户ID和会话ID
+        user_id = conn_info.user_info.user_id
+        
+        # 从消息内容中获取会话ID
+        conversation_id = None
+        if isinstance(message.content, dict):
+            conversation_id = message.content.get("conversation_id")
+        elif isinstance(message.content, str):
+            conversation_id = message.content
+        
+        if not conversation_id:
+            error_message = WebSocketMessage(
+                type=MessageType.ERROR,
+                content={"error": "缺少会话ID"},
+                sender_id="system",
+                receiver_id=None,
+                room_id=None,
+                timestamp=datetime.utcnow()
+            )
+            await self.connection_manager.send_to_connection(connection_id, error_message)
+            return
+        
+        # 更新用户会话映射
+        user_conversations[user_id] = conversation_id
+        logger.info(f"用户 {user_id} 切换到会话 {conversation_id}")
+        
+        # 发送切换成功消息
+        success_message = WebSocketMessage(
+            type=MessageType.NOTIFICATION,
+            content={
+                "message": f"成功切换到会话 {conversation_id}",
+                "conversation_id": conversation_id,
+                "type": "conversation_switched"
+            },
+            sender_id="system",
+            receiver_id=None,
+            room_id=f"user_{user_id}_room",
+            timestamp=datetime.utcnow()
+        )
+        await self.connection_manager.send_to_connection(connection_id, success_message)
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -665,6 +738,23 @@ custom_message_handler = CustomMessageHandler(connection_manager)
 
 # 全局变量存储消息处理器
 message_handlers: Dict[str, Any] = {}
+
+
+async def periodic_cache_cleanup():
+    """定期清理过期缓存的后台任务"""
+    while True:
+        try:
+            # 每30分钟清理一次过期缓存
+            await asyncio.sleep(1800)  # 30分钟
+            service_manager.clear_expired_cache()
+            logger.info("定期清理过期缓存完成")
+        except asyncio.CancelledError:
+            logger.info("缓存清理任务已停止")
+            break
+        except Exception as e:
+            logger.error(f"定期清理过期缓存失败: {e}")
+            # 如果出错，等待10分钟后重试
+            await asyncio.sleep(600)
 
 # =========================
 # 数据模型定义
@@ -725,6 +815,9 @@ async def lifespan(app: FastAPI):
             connection_manager._heartbeat_loop()
         )
     
+    # 启动定期缓存清理任务
+    cache_cleanup_task = asyncio.create_task(periodic_cache_cleanup())
+    
     logger.info("WebSocket 服务已启动")
     
     yield
@@ -748,13 +841,12 @@ async def lifespan(app: FastAPI):
         except Exception as session_cleanup_error:
             logger.error(f"⚠️  关闭会话管理器时发生错误: {session_cleanup_error}")
     
-    # 关闭数据库连接
-    if db_client is not None:
-        try:
-            db_client.close()
-            logger.info("✅ 数据库连接已关闭")
-        except Exception as db_cleanup_error:
-            logger.error(f"⚠️  关闭数据库连接时发生错误: {db_cleanup_error}")
+    # 关闭服务管理器（统一关闭所有服务）
+    try:
+        service_manager.close()
+        logger.info("✅ 服务管理器已关闭")
+    except Exception as service_cleanup_error:
+        logger.error(f"⚠️  关闭服务管理器时发生错误: {service_cleanup_error}")
     
     logger.info("WebSocket 服务已关闭")
 
@@ -1014,13 +1106,17 @@ async def test_page():
 
 @app.get("/status")
 async def get_status():
-    """获取服务状态信息"""
+    """获取服务状态信息（优化版本）"""
+    # 获取服务管理器统计信息
+    service_stats = service_manager.get_stats()
+    
     return {
         "active_connections": await connection_manager.get_active_connections_count(),
         "total_rooms": await connection_manager.get_room_count(),
         "heartbeat_interval": connection_manager.heartbeat_interval,
         "connection_timeout": connection_manager.connection_timeout,
-        "service_uptime": "正在运行"
+        "service_uptime": "正在运行",
+        "service_manager": service_stats
     }
 
 
@@ -1190,8 +1286,8 @@ async def websocket_endpoint(
         await websocket.close(code=4001, reason="连接需要有效的JWT令牌")
         return
     
-    # 验证JWT令牌
-    authenticated_user = auth_service.verify_token(token)
+    # 验证JWT令牌（使用缓存版本）
+    authenticated_user = service_manager.verify_token_cached(token)
     if not authenticated_user:
         logger.warning(f"WebSocket连接被拒绝：无效的JWT令牌")
         await websocket.close(code=4001, reason="JWT令牌无效或已过期")
@@ -1256,22 +1352,11 @@ async def websocket_endpoint(
     
     # 为用户创建单独的房间
     user_room_id = f"user_{user_id}_room"
-    user_rooms[user_id] = user_room_id
     
     logger.info(f"新的 WebSocket 连接请求: {connection_id}, 用户: {user_info}, 房间: {user_room_id}")
     
     try:
-        # 检查用户是否已有连接，如果有则清理旧连接
-        existing_connections = await connection_manager.get_user_connections(user_id)
-        if existing_connections:
-            logger.info(f"用户 {user_id} 已有连接，清理旧连接: {existing_connections}")
-            for old_conn_id in existing_connections:
-                try:
-                    await connection_manager.disconnect(old_conn_id, code=1000)
-                except Exception as e:
-                    logger.warning(f"清理旧连接失败: {e}")
-        
-        # 建立新连接
+        # 建立新连接（允许同一用户多个连接）
         await connection_manager.connect(
             websocket=websocket,
             connection_id=connection_id,
@@ -1362,9 +1447,11 @@ async def websocket_endpoint(
                     message.sender_id = user_info.user_id
                     message.room_id = user_room_id
                     
-                    # 使用自定义消息处理器处理聊天消息
+                    # 使用自定义消息处理器处理聊天消息和会话切换消息
                     if message.type == MessageType.CHAT:
                         await custom_message_handler.handle_chat(connection_id, message, authenticated_user)
+                    elif message.type == MessageType.SWITCH_CONVERSATION:
+                        await custom_message_handler.handle_switch_conversation(connection_id, message, authenticated_user)
                     else:
                         # 其他消息类型使用默认处理器
                         await connection_manager.handle_message(connection_id, message)
@@ -1403,10 +1490,6 @@ async def websocket_endpoint(
         logger.error(f"WebSocket 连接错误: {str(e)}")
         
     finally:
-        # 清理用户房间映射
-        if user_id in user_rooms:
-            del user_rooms[user_id]
-        
         # 断开连接
         await connection_manager.disconnect(connection_id)
         logger.info(f"WebSocket 连接已清理: {connection_id}")
@@ -1499,6 +1582,52 @@ async def get_rooms(current_user: Dict[str, Any] = CurrentUser):
     }
 
 
+@app.post("/admin/cache/clear")
+async def clear_cache(current_user: Dict[str, Any] = CurrentUser):
+    """清理所有缓存（管理员功能）"""
+    try:
+        # 清理服务管理器缓存
+        service_manager.clear_cache()
+        
+        # 获取清理后的统计信息
+        stats = service_manager.get_stats()
+        
+        return {
+            "success": True,
+            "message": "缓存已清理",
+            "stats": stats
+        }
+    except Exception as e:
+        logger.error(f"清理缓存失败: {e}")
+        return {
+            "success": False,
+            "message": f"清理缓存失败: {str(e)}"
+        }
+
+
+@app.post("/admin/cache/cleanup")
+async def cleanup_expired_cache(current_user: Dict[str, Any] = CurrentUser):
+    """清理过期缓存（管理员功能）"""
+    try:
+        # 清理过期缓存
+        service_manager.clear_expired_cache()
+        
+        # 获取清理后的统计信息
+        stats = service_manager.get_stats()
+        
+        return {
+            "success": True,
+            "message": "过期缓存已清理",
+            "stats": stats
+        }
+    except Exception as e:
+        logger.error(f"清理过期缓存失败: {e}")
+        return {
+            "success": False,
+            "message": f"清理过期缓存失败: {str(e)}"
+        }
+
+
 @app.get("/api/conversations/{user_id}")
 async def get_user_conversations(
     user_id: int = Path(..., description="用户ID"),
@@ -1525,12 +1654,11 @@ async def get_user_conversations(
         if str(user_id) != current_user["user_id"]:
             raise HTTPException(status_code=403, detail="无权访问其他用户的会话")
         
-        # 检查数据库客户端是否已初始化
-        if db_client is None:
-            raise HTTPException(status_code=500, detail="数据库未初始化")
-        
-        # 创建会话服务
-        conversation_service = ConversationService(db_client)
+        # 使用服务管理器获取会话服务
+        conversation_service = service_manager.get_service(
+            'conversation_service',
+            ConversationService
+        )
         
         # 获取用户会话列表
         conversations = conversation_service.get_user_conversations(
@@ -1559,8 +1687,7 @@ async def get_user_conversations(
         # 获取总数统计
         total_conversations = len(conversations)
         
-        # 关闭服务
-        conversation_service.close()
+        # 不需要关闭服务，使用共享实例
         
         return ConversationListResponse(
             success=True,
@@ -1600,13 +1727,15 @@ async def get_conversation_messages(
         聊天记录响应
     """
     try:
-        # 检查数据库客户端是否已初始化
-        if db_client is None:
-            raise HTTPException(status_code=500, detail="数据库未初始化")
-        
-        # 创建服务
-        conversation_service = ConversationService(db_client)
-        chat_message_service = ChatMessageService(db_client)
+        # 使用服务管理器获取服务
+        conversation_service = service_manager.get_service(
+            'conversation_service',
+            ConversationService
+        )
+        chat_message_service = service_manager.get_service(
+            'chat_message_service',
+            ChatMessageService
+        )
         
         # 验证会话是否存在
         conversation = conversation_service.get_conversation_by_id_str(conversation_id_str)
@@ -1660,9 +1789,7 @@ async def get_conversation_messages(
         # 获取总消息数
         total_messages = len(messages)
         
-        # 关闭服务
-        conversation_service.close()
-        chat_message_service.close()
+        # 不需要关闭服务，使用共享实例
         
         return ChatMessageResponse(
             success=True,

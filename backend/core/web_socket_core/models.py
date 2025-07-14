@@ -24,6 +24,7 @@ class MessageType(str, Enum):
     
     # 用户消息 (User Messages)
     CHAT = "chat"                # 聊天消息 (Chat message)
+    SWITCH_CONVERSATION = "switch_conversation"  # 切换会话 (Switch conversation)
     NOTIFICATION = "notification" # 通知消息 (Notification)
     COMMAND = "command"           # 命令消息 (Command message)
     DATA = "data"                # 数据消息 (Data message)
