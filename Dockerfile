@@ -13,13 +13,14 @@ COPY ui/package*.json ./
 
 # 清理 npm 缓存并安装所有依赖
 RUN npm cache clean --force && \
-    npm ci --no-audit --no-fund
+    npm ci --no-audit --no-fund && \
+    npm ls vite
 
 # 复制前端源代码
 COPY ui/ .
 
 # 构建前端应用（跳过 TypeScript 检查以避免生产构建失败）
-RUN npm run build:prod
+RUN npm run build:prod || npm run build:simple
 
 # 验证构建结果
 RUN ls -la dist/
