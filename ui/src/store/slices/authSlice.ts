@@ -64,7 +64,7 @@ export const refreshToken = createAsyncThunk<AuthToken, void, { rejectValue: str
   }
 );
 
-export const getCurrentUser = createAsyncThunk<User, void, { rejectValue: string }>(
+export const getCurrentUser = createAsyncThunk<User, void, { rejectValue: { message: string; isAuthError: boolean } }>(
   'auth/getCurrentUser',
   async (_, { rejectWithValue }) => {
     try {
@@ -80,13 +80,33 @@ export const getCurrentUser = createAsyncThunk<User, void, { rejectValue: string
           return userInfo;
         } else {
           console.warn('⚠️ getCurrentUser: API成功但无用户数据:', response);
-          return rejectWithValue(response.message || '获取用户信息失败');
+          return rejectWithValue({ message: response.message || '获取用户信息失败', isAuthError: false });
         }
       } else {
-        return rejectWithValue(response.message || '获取用户信息失败');
+        return rejectWithValue({ message: response.message || '获取用户信息失败', isAuthError: false });
       }
     } catch (error: any) {
-      return rejectWithValue(error.message);
+      console.error('❌ getCurrentUser: 获取失败:', error);
+      
+      // 检查是否是认证相关错误（401或特定业务错误码）
+      const isAuthError = error.response?.status === 401 || 
+                         (error.response?.data?.code >= 1001 && error.response?.data?.code <= 1004);
+      
+      if (isAuthError) {
+        // 认证错误，静默处理
+        console.log('🔇 getCurrentUser: 认证错误，静默处理');
+        return rejectWithValue({ 
+          message: error.response?.data?.message || error.message || '认证失败', 
+          isAuthError: true 
+        });
+      } else {
+        // 其他错误（网络错误等）
+        console.log('⚠️ getCurrentUser: 非认证错误');
+        return rejectWithValue({ 
+          message: error.message || '获取用户信息失败', 
+          isAuthError: false 
+        });
+      }
     }
   }
 );
@@ -253,11 +273,25 @@ const authSlice = createSlice({
       })
       .addCase(getCurrentUser.rejected, (state, action) => {
         state.isLoading = false;
-        state.error = action.payload as string;
-        // 获取用户信息失败，清除认证状态
-        state.user = null;
-        state.token = null;
-        state.isAuthenticated = false;
+        
+        // 检查是否是认证错误
+        const payload = action.payload as { message: string; isAuthError: boolean };
+        
+        if (payload?.isAuthError) {
+          // 认证错误静默处理，不设置错误状态，避免显示弹窗
+          console.log('🔇 getCurrentUser.rejected: 认证错误，静默清除认证状态');
+          state.user = null;
+          state.token = null;
+          state.isAuthenticated = false;
+          state.error = null; // 不设置错误，静默处理
+        } else {
+          // 非认证错误，清除认证状态并记录错误
+          console.log('⚠️ getCurrentUser.rejected: 非认证错误，清除认证状态');
+          state.user = null;
+          state.token = null;
+          state.isAuthenticated = false;
+          state.error = payload?.message || '获取用户信息失败';
+        }
       })
       // 验证token
       .addCase(validateToken.pending, (state) => {
@@ -278,12 +312,12 @@ const authSlice = createSlice({
         const payload = action.payload as { message: string; isAuthError: boolean };
         
         if (payload?.isAuthError) {
-          // 只有认证错误才清除认证状态
-          console.log('🧹 validateToken.rejected: 认证错误，清除认证状态');
+          // 认证错误静默处理，不设置错误状态，避免显示弹窗
+          console.log('🔇 validateToken.rejected: 认证错误，静默清除认证状态');
           state.user = null;
           state.token = null;
           state.isAuthenticated = false;
-          state.error = payload.message;
+          state.error = null; // 不设置错误，静默处理
         } else {
           // 非认证错误，保持认证状态，只记录错误
           console.log('⚠️ validateToken.rejected: 非认证错误，保持认证状态');

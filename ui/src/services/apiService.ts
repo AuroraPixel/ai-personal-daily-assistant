@@ -93,8 +93,10 @@ apiClient.interceptors.response.use(
             globalErrorHandler(errorMessage, response.data);
           }
         }
-        // 对于其他认证相关错误，触发路由守卫
+        // 对于其他认证相关错误，静默处理
         else if (errorCode >= 1001 && errorCode <= 1004) {
+          console.log('🔇 认证相关错误，静默处理:', response.data.message);
+          
           // 对于令牌过期等情况，调用认证失败处理器
           if (authFailureHandler && (
             errorCode === 1003 || // TOKEN_EXPIRED
@@ -103,11 +105,7 @@ apiClient.interceptors.response.use(
             authFailureHandler();
           }
           
-          // 显示认证错误信息
-          if (globalErrorHandler) {
-            const errorMessage = response.data.message || '认证失败';
-            globalErrorHandler(errorMessage, response.data);
-          }
+          // 不显示认证错误的弹窗，让用户体验更平滑
         }
         // 其他业务错误
         else {
@@ -133,24 +131,22 @@ apiClient.interceptors.response.use(
        responseData.code <= 1004);
     
     if (isAuthError) {
+      console.log('🔇 HTTP认证错误，静默处理:', error.response?.status, responseData?.message);
+      
       // 对于令牌过期等情况，调用认证失败处理器
       if (authFailureHandler && (
+        error.response?.status === 401 || // HTTP 401
         responseData?.code === 1003 || // TOKEN_EXPIRED
         responseData?.code === 1004    // TOKEN_INVALID
       )) {
         authFailureHandler();
       }
       
-      // 显示认证错误信息
-      if (globalErrorHandler) {
-        const errorMessage = getErrorMessage(error);
-        globalErrorHandler(errorMessage, error.response?.data);
-      }
-      
+      // 不显示认证错误的弹窗，直接跳转到登录页，让用户体验更平滑
       return Promise.reject(error);
     }
     
-    // 处理其他错误
+    // 处理其他错误（非认证错误才显示弹窗）
     if (globalErrorHandler) {
       const errorMessage = getErrorMessage(error);
       globalErrorHandler(errorMessage, error.response?.data);
