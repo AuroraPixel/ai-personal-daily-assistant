@@ -10,8 +10,9 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Path
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Path, Form, Response
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import asyncio
 from agent.personal_assistant_manager import PersonalAssistantManager, PersonalAssistantContext
 # 导入会话管理器
@@ -29,6 +30,10 @@ from uuid import uuid4
 # 导入服务层
 from service.services.conversation_service import ConversationService
 from service.services.chat_message_service import ChatMessageService
+
+# 导入认证模块
+from core.auth import auth_service, Token, AuthUtils
+from core.middleware import CurrentUser, CurrentUserOptional, get_current_user, get_current_user_optional
 
 from core.web_socket_core import (
     connection_manager,
@@ -220,7 +225,7 @@ def _get_agent_by_name(name: str):
 # =========================
 # 流式处理函数
 # =========================
-async def handle_stream_chat(user_id: str, message: str, connection_id: str) -> None:
+async def handle_stream_chat(user_id: str, message: str, connection_id: str, authenticated_user: Optional[Dict[str, Any]] = None) -> None:
     """处理流式聊天消息"""
     try:
         # 检查会话管理器是否初始化
@@ -530,7 +535,7 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str) -> 
 class CustomMessageHandler(WebSocketMessageHandler):
     """自定义消息处理器，支持流式输出"""
     
-    async def handle_chat(self, connection_id: str, message: WebSocketMessage):
+    async def handle_chat(self, connection_id: str, message: WebSocketMessage, authenticated_user: Optional[Dict[str, Any]] = None):
         """处理聊天消息 - 支持流式输出"""
         logger.info(f"处理流式聊天消息: {connection_id}")
         
@@ -557,7 +562,7 @@ class CustomMessageHandler(WebSocketMessageHandler):
             message_content = message_content.get("message", "")
         
         # 启动流式处理
-        await handle_stream_chat(user_id, str(message_content), connection_id)
+        await handle_stream_chat(user_id, str(message_content), connection_id, authenticated_user)
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -589,6 +594,26 @@ class ChatMessageResponse(BaseModel):
     total: int = 0
     conversation_id: str
     conversation_info: Optional[Dict[str, Any]] = None
+
+
+class LoginRequest(BaseModel):
+    """登录请求模型"""
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    """登录响应模型"""
+    success: bool
+    message: str
+    token: Optional[Token] = None
+    user_info: Optional[Dict[str, Any]] = None
+
+
+class LogoutResponse(BaseModel):
+    """退出登录响应模型"""
+    success: bool
+    message: str
 
 # =========================
 # 启动时初始化
@@ -898,30 +923,226 @@ async def get_status():
     }
 
 
+@app.post("/auth/login", response_model=LoginResponse)
+async def login(response: Response, login_request: LoginRequest):
+    """
+    用户登录接口
+    
+    Args:
+        response: FastAPI响应对象
+        login_request: 登录请求数据
+        
+    Returns:
+        登录响应
+    """
+    try:
+        # 验证用户凭据
+        token = auth_service.login(login_request.username, login_request.password)
+        
+        if not token:
+            return LoginResponse(
+                success=False,
+                message="用户名或密码错误"
+            )
+        
+        # 设置Cookie
+        response.set_cookie(
+            key="access_token",
+            value=token.access_token,
+            max_age=token.expires_in,
+            httponly=True,
+            secure=False,  # 在生产环境中应该设置为True
+            samesite="lax"
+        )
+        
+        logger.info(f"用户 {login_request.username} 登录成功")
+        
+        return LoginResponse(
+            success=True,
+            message="登录成功",
+            token=token,
+            user_info=token.user_info
+        )
+        
+    except Exception as e:
+        logger.error(f"登录失败: {str(e)}")
+        return LoginResponse(
+            success=False,
+            message=f"登录失败: {str(e)}"
+        )
+
+
+@app.post("/auth/logout", response_model=LogoutResponse)
+async def logout(response: Response, current_user: Dict[str, Any] = CurrentUserOptional):
+    """
+    用户退出登录接口
+    
+    Args:
+        response: FastAPI响应对象
+        current_user: 当前用户信息（可选）
+        
+    Returns:
+        退出登录响应
+    """
+    try:
+        # 清除Cookie
+        response.delete_cookie(key="access_token")
+        
+        username = current_user.get("username", "未知用户") if current_user else "未知用户"
+        logger.info(f"用户 {username} 退出登录")
+        
+        return LogoutResponse(
+            success=True,
+            message="退出登录成功"
+        )
+        
+    except Exception as e:
+        logger.error(f"退出登录失败: {str(e)}")
+        return LogoutResponse(
+            success=False,
+            message=f"退出登录失败: {str(e)}"
+        )
+
+
+@app.post("/auth/refresh", response_model=LoginResponse)
+async def refresh_token(response: Response, current_user: Dict[str, Any] = CurrentUser):
+    """
+    刷新令牌接口
+    
+    Args:
+        response: FastAPI响应对象
+        current_user: 当前用户信息
+        
+    Returns:
+        新的令牌信息
+    """
+    try:
+        # 重新生成令牌
+        token_data = {
+            "user_id": current_user["user_id"],
+            "username": current_user["username"],
+            "email": current_user["email"]
+        }
+        
+        new_token = auth_service.login(current_user["username"], "admin123456")
+        
+        if not new_token:
+            raise HTTPException(status_code=401, detail="令牌刷新失败")
+        
+        # 更新Cookie
+        response.set_cookie(
+            key="access_token",
+            value=new_token.access_token,
+            max_age=new_token.expires_in,
+            httponly=True,
+            secure=False,  # 在生产环境中应该设置为True
+            samesite="lax"
+        )
+        
+        logger.info(f"用户 {current_user['username']} 刷新令牌成功")
+        
+        return LoginResponse(
+            success=True,
+            message="令牌刷新成功",
+            token=new_token,
+            user_info=new_token.user_info
+        )
+        
+    except Exception as e:
+        logger.error(f"令牌刷新失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"令牌刷新失败: {str(e)}")
+
+
+@app.get("/auth/me")
+async def get_current_user_info(current_user: Dict[str, Any] = CurrentUser):
+    """
+    获取当前用户信息接口
+    
+    Args:
+        current_user: 当前用户信息
+        
+    Returns:
+        用户信息
+    """
+    return {
+        "success": True,
+        "message": "获取用户信息成功",
+        "user_info": current_user
+    }
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
     user_id: Optional[str] = Query(None, description="用户ID - 必需"),
     username: Optional[str] = Query(None, description="用户名"),
     room_id: Optional[str] = Query(None, description="房间ID"),
-    conversation_id: Optional[str] = Query(None, description="会话ID")
+    conversation_id: Optional[str] = Query(None, description="会话ID"),
+    token: Optional[str] = Query(None, description="JWT令牌")
 ):
     """
     WebSocket 主端点
     处理 WebSocket 连接和消息
+    需要有效的JWT令牌才能建立连接
     """
-    # 验证用户ID
+    # 严格的JWT认证验证 - 强制要求有效令牌
+    if not token:
+        logger.warning("WebSocket连接被拒绝：缺少JWT令牌")
+        await websocket.close(code=4001, reason="连接需要有效的JWT令牌")
+        return
+    
+    # 验证JWT令牌
+    authenticated_user = auth_service.verify_token(token)
+    if not authenticated_user:
+        logger.warning(f"WebSocket连接被拒绝：无效的JWT令牌")
+        await websocket.close(code=4001, reason="JWT令牌无效或已过期")
+        return
+    
+    # 额外的令牌有效性检查
+    try:
+        # 检查令牌是否包含必要的用户信息
+        if not authenticated_user.get("user_id"):
+            logger.warning("WebSocket连接被拒绝：令牌缺少用户ID")
+            await websocket.close(code=4001, reason="令牌缺少必要的用户信息")
+            return
+        
+        # 检查令牌是否过期（额外验证）
+        import time
+        exp = authenticated_user.get("exp")
+        if exp and exp < time.time():
+            logger.warning("WebSocket连接被拒绝：令牌已过期")
+            await websocket.close(code=4001, reason="JWT令牌已过期")
+            return
+            
+    except Exception as e:
+        logger.error(f"WebSocket令牌验证异常: {e}")
+        await websocket.close(code=4001, reason="令牌验证失败")
+        return
+    
+    # 确定用户ID
     if not user_id:
-        await websocket.close(code=4001, reason="缺少用户ID参数")
+        # 如果没有提供用户ID，使用认证用户的ID
+        user_id = authenticated_user["user_id"]
+    else:
+        # 如果提供了用户ID，验证是否与令牌匹配
+        if str(user_id) != authenticated_user["user_id"]:
+            logger.warning(f"WebSocket连接被拒绝：用户ID不匹配 - 参数:{user_id}, 令牌:{authenticated_user['user_id']}")
+            await websocket.close(code=4003, reason="用户ID与令牌不匹配")
+            return
+    
+    # 确保user_id不为None（类型检查）
+    if user_id is None:
+        logger.error("WebSocket连接被拒绝：无法确定用户ID")
+        await websocket.close(code=4001, reason="无法确定用户ID")
         return
     
     connection_id = generate_connection_id()
     
-    # 创建用户信息
+    # 创建用户信息（现在总是有已认证的用户）
     user_info = UserInfo(
         user_id=user_id,
-        username=username or f"用户_{user_id}",
-        email=None,
+        username=authenticated_user.get("username") or username or f"用户_{user_id}",
+        email=authenticated_user.get("email"),
         avatar=None,
         roles=["user"]
     )
@@ -985,6 +1206,7 @@ async def websocket_endpoint(
                 "connection_id": connection_id,
                 "user_info": user_info.dict(),
                 "room_id": user_room_id,
+                "authenticated": True,  # 现在所有连接都需要认证
                 "timestamp": datetime.utcnow().isoformat()
             },
             sender_id="system",
@@ -1039,7 +1261,7 @@ async def websocket_endpoint(
                     
                     # 使用自定义消息处理器处理聊天消息
                     if message.type == MessageType.CHAT:
-                        await custom_message_handler.handle_chat(connection_id, message)
+                        await custom_message_handler.handle_chat(connection_id, message, authenticated_user)
                     else:
                         # 其他消息类型使用默认处理器
                         await connection_manager.handle_message(connection_id, message)
@@ -1092,7 +1314,8 @@ async def broadcast_message(
     message_type: str,
     content: str,
     room_id: Optional[str] = None,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    current_user: Dict[str, Any] = CurrentUser
 ):
     """
     广播消息 API
@@ -1138,7 +1361,7 @@ async def broadcast_message(
 
 
 @app.get("/connections")
-async def get_connections():
+async def get_connections(current_user: Dict[str, Any] = CurrentUser):
     """获取所有活跃连接信息"""
     connections = []
     for conn_id in connection_manager.active_connections.keys():
@@ -1153,7 +1376,7 @@ async def get_connections():
 
 
 @app.get("/rooms")
-async def get_rooms():
+async def get_rooms(current_user: Dict[str, Any] = CurrentUser):
     """获取所有房间信息"""
     rooms = []
     for room_id, room_info in connection_manager.rooms.items():
@@ -1178,7 +1401,8 @@ async def get_user_conversations(
     user_id: int = Path(..., description="用户ID"),
     status: Optional[str] = Query(None, description="会话状态过滤（active/inactive/archived）"),
     limit: int = Query(50, ge=1, le=100, description="返回数量限制"),
-    offset: int = Query(0, ge=0, description="偏移量")
+    offset: int = Query(0, ge=0, description="偏移量"),
+    current_user: Dict[str, Any] = CurrentUser
 ):
     """
     获取用户的会话列表
@@ -1188,11 +1412,16 @@ async def get_user_conversations(
         status: 会话状态过滤（可选）
         limit: 返回数量限制
         offset: 偏移量
+        current_user: 当前认证用户
         
     Returns:
         会话列表响应
     """
     try:
+        # 验证用户只能访问自己的会话 - 这是第一优先级检查
+        if str(user_id) != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="无权访问其他用户的会话")
+        
         # 检查数据库客户端是否已初始化
         if db_client is None:
             raise HTTPException(status_code=500, detail="数据库未初始化")
@@ -1238,6 +1467,9 @@ async def get_user_conversations(
             user_id=user_id
         )
         
+    except HTTPException:
+        # 重新抛出HTTP异常（如403权限错误）
+        raise
     except Exception as e:
         logger.error(f"获取用户会话列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取会话列表失败: {str(e)}")
@@ -1248,7 +1480,8 @@ async def get_conversation_messages(
     conversation_id_str: str = Path(..., description="会话ID字符串"),
     limit: int = Query(50, ge=1, le=200, description="返回数量限制"),
     offset: int = Query(0, ge=0, description="偏移量"),
-    order_desc: bool = Query(True, description="是否按创建时间倒序排列")
+    order_desc: bool = Query(True, description="是否按创建时间倒序排列"),
+    current_user: Dict[str, Any] = CurrentUser
 ):
     """
     获取会话的聊天记录
@@ -1258,6 +1491,7 @@ async def get_conversation_messages(
         limit: 返回数量限制
         offset: 偏移量
         order_desc: 是否按创建时间倒序排列
+        current_user: 当前认证用户
         
     Returns:
         聊天记录响应
@@ -1275,6 +1509,10 @@ async def get_conversation_messages(
         conversation = conversation_service.get_conversation_by_id_str(conversation_id_str)
         if not conversation:
             raise HTTPException(status_code=404, detail=f"会话 {conversation_id_str} 不存在")
+        
+        # 验证用户只能访问自己的会话
+        if str(conversation.user_id) != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="无权访问其他用户的会话消息")
         
         # 获取聊天记录
         messages = chat_message_service.get_conversation_messages_by_id_str(
@@ -1333,6 +1571,7 @@ async def get_conversation_messages(
         )
         
     except HTTPException:
+        # 重新抛出HTTP异常（如403权限错误、404不存在等）
         raise
     except Exception as e:
         logger.error(f"获取会话聊天记录失败: {str(e)}")
