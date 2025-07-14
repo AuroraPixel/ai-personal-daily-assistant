@@ -45,12 +45,15 @@ export function AgentPanel({
           <AgentsList agents={agents} currentAgent={currentAgent} />
         </PanelSection>
 
+        {/* 安全护栏功能已暂时隐藏 */}
+        {/*
         <PanelSection title="安全护栏" defaultOpen={true}>
           <Guardrails
             guardrails={guardrails}
             inputGuardrails={activeAgent?.input_guardrails ?? []}
           />
         </PanelSection>
+        */}
 
         <PanelSection title="对话上下文" defaultOpen={true}>
           <ConversationContext context={context} />

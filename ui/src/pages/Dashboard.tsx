@@ -129,6 +129,12 @@ const Dashboard: React.FC = () => {
           setStreamingResponse('');
           setIsLoading(false);
           
+          // 确保在完成时也更新当前代理状态
+          if (content.current_agent) {
+            console.log('🔄 消息完成时更新当前代理:', content.current_agent);
+            setCurrentAgent(content.current_agent);
+          }
+          
           // 处理最终响应
           if (content.final_response) {
             handleChatResponse(content.final_response);
@@ -150,7 +156,9 @@ const Dashboard: React.FC = () => {
             setConversationId(content.conversation_id);
           }
           
+          // 确保实时更新当前代理，包括agent切换
           if (content.current_agent) {
+            console.log('🔄 流式响应期间更新当前代理:', content.current_agent);
             setCurrentAgent(content.current_agent);
           }
           
@@ -184,6 +192,7 @@ const Dashboard: React.FC = () => {
           }
           
           if (response.current_agent) {
+            console.log('💬 聊天响应中更新当前代理:', response.current_agent);
             setCurrentAgent(response.current_agent);
           }
           
@@ -499,8 +508,8 @@ const Dashboard: React.FC = () => {
         <div className="flex-1 flex overflow-hidden">
           {/* 桌面端布局 */}
           <div className="hidden md:flex flex-1">
-                                      {/* 左侧面板 */}
-             <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+                                      {/* 左侧面板 - Agent View (40%) */}
+             <div className="w-2/5 bg-white border-r border-gray-200 flex flex-col">
                <AgentPanel
                  agents={agents}
                  currentAgent={currentAgent}
@@ -510,8 +519,8 @@ const Dashboard: React.FC = () => {
                />
              </div>
 
-             {/* 中间聊天区域 */}
-             <div className="flex-1 flex flex-col">
+             {/* 右侧聊天区域 - Customer View (60%) */}
+             <div className="w-3/5 flex flex-col">
                <Chat
                  messages={messages}
                  onSendMessage={handleSendMessage}
