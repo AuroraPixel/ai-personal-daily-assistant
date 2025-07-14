@@ -2,7 +2,7 @@
 聊天记录数据模型
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, Text, DateTime, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database_core import BaseModel
@@ -46,11 +46,11 @@ class ChatMessage(BaseModel):
         STATUS_FAILED
     ]
     
-    # 会话ID（外键）
-    conversation_id = Column(Integer, ForeignKey('conversations.id'), nullable=False, comment='会话ID')
+    # 会话ID（业务逻辑关联，无外键约束）
+    conversation_id = Column(Integer, nullable=False, comment='会话ID（业务逻辑关联）')
     
-    # 会话字符串标识符（用于UUID管理）
-    conversation_id_str = Column(String(36), ForeignKey('conversations.id_str'), nullable=False, comment='会话字符串标识符（UUID）')
+    # 会话字符串标识符（业务逻辑关联，无外键约束）
+    conversation_id_str = Column(String(36), nullable=False, comment='会话字符串标识符（业务逻辑关联）')
     
     # 发送者类型
     sender_type = Column(String(20), nullable=False, comment='发送者类型')
@@ -70,12 +70,12 @@ class ChatMessage(BaseModel):
     # 元数据（JSON格式存储额外信息）
     extra_data = Column(Text, comment='元数据（JSON格式）')
     
-    # 回复的消息ID（可选）
-    reply_to_id = Column(Integer, ForeignKey('chat_messages.id'), comment='回复的消息ID')
+    # 回复的消息ID（业务逻辑关联，无外键约束）
+    reply_to_id = Column(Integer, comment='回复的消息ID（业务逻辑关联）')
     
-    # 关联关系
-    conversation = relationship("Conversation", back_populates="messages", foreign_keys=[conversation_id])
-    reply_to = relationship("ChatMessage", remote_side='ChatMessage.id')
+    # 注释：关联关系移除，改为使用业务逻辑查询
+    # conversation = relationship("Conversation", back_populates="messages", foreign_keys=[conversation_id])
+    # reply_to = relationship("ChatMessage", remote_side='ChatMessage.id')
     
     # 创建索引优化查询
     __table_args__ = (
@@ -85,6 +85,7 @@ class ChatMessage(BaseModel):
         Index('idx_chat_message_sender_id', 'sender_id'),
         Index('idx_chat_message_created_at', 'created_at'),
         Index('idx_chat_message_status', 'status'),
+        Index('idx_chat_message_reply_to_id', 'reply_to_id'),
     )
     
     def __repr__(self):
@@ -195,8 +196,9 @@ class ChatMessage(BaseModel):
     
     def get_content_preview(self, max_length=100):
         """获取消息内容预览"""
-        if self.content is None or self.content == "":
+        content_value = getattr(self, 'content', None)
+        if content_value is None or content_value == "":
             return ""
-        if len(self.content) <= max_length:
-            return self.content
-        return self.content[:max_length] + "..." 
+        if len(content_value) <= max_length:
+            return content_value
+        return content_value[:max_length] + "..." 

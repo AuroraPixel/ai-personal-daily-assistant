@@ -4,7 +4,6 @@
 
 import uuid
 from sqlalchemy import Column, Integer, String, Text, DateTime, Index
-from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database_core import BaseModel
 
@@ -45,9 +44,6 @@ class Conversation(BaseModel):
     
     # 最后活跃时间
     last_active = Column(DateTime, default=func.now(), onupdate=func.now(), comment='最后活跃时间')
-    
-    # 关联关系
-    messages = relationship("ChatMessage", back_populates="conversation", cascade="all, delete-orphan", foreign_keys="[ChatMessage.conversation_id]")
     
     # 创建索引优化查询
     __table_args__ = (

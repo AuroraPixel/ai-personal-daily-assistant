@@ -2,7 +2,7 @@
 待办事项数据模型
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database_core import BaseModel
@@ -31,8 +31,8 @@ class Todo(BaseModel):
     # 优先级（high, medium, low）
     priority = Column(String(10), default='medium', comment='优先级')
     
-    # 关联的笔记ID（可选）
-    note_id = Column(Integer, ForeignKey('notes.id'), comment='关联的笔记ID')
+    # 关联的笔记ID（业务逻辑关联，无外键约束）
+    note_id = Column(Integer, comment='关联的笔记ID（业务逻辑关联）')
     
     # 截止日期
     due_date = Column(DateTime, comment='截止日期')
@@ -43,8 +43,8 @@ class Todo(BaseModel):
     # 最后更新时间
     last_updated = Column(DateTime, default=func.now(), onupdate=func.now(), comment='最后更新时间')
     
-    # 建立与笔记的关联关系
-    note = relationship("Note", backref="todos")
+    # 注释：移除外键关联关系，改为使用业务逻辑查询
+    # note = relationship("Note", backref="todos")
     
     # 创建索引优化查询
     __table_args__ = (
