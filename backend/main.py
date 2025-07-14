@@ -6,6 +6,10 @@ AI 个人日常助手 - 主应用入口
 
 import asyncio
 import logging
+import subprocess
+import sys
+import os
+import signal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -31,6 +35,89 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # =========================
+# 全局变量 - MCP服务器进程管理
+# =========================
+mcp_server_process = None
+
+# =========================
+# MCP服务器进程管理函数
+# =========================
+async def start_mcp_server():
+    """启动MCP服务器进程"""
+    global mcp_server_process
+    
+    try:
+        print("🔌 正在启动MCP服务器进程...")
+        
+        # 获取mcp_server.py的路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        mcp_server_path = os.path.join(current_dir, "mcp-serve", "mcp_server.py")
+        
+        # 启动子进程
+        mcp_server_process = await asyncio.create_subprocess_exec(
+            sys.executable, mcp_server_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=current_dir
+        )
+        
+        print(f"✅ MCP服务器进程已启动 (PID: {mcp_server_process.pid})")
+        
+        # 启动后台任务监控MCP服务器输出
+        asyncio.create_task(monitor_mcp_server_output())
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ 启动MCP服务器进程失败: {e}")
+        return False
+
+async def stop_mcp_server():
+    """停止MCP服务器进程"""
+    global mcp_server_process
+    
+    if mcp_server_process:
+        try:
+            print("🛑 正在停止MCP服务器进程...")
+            
+            # 发送终止信号
+            mcp_server_process.terminate()
+            
+            # 等待进程结束，最多等待10秒
+            try:
+                await asyncio.wait_for(mcp_server_process.wait(), timeout=10.0)
+                print("✅ MCP服务器进程已正常停止")
+            except asyncio.TimeoutError:
+                print("⚠️  MCP服务器进程未在规定时间内停止，强制终止...")
+                mcp_server_process.kill()
+                await mcp_server_process.wait()
+                print("✅ MCP服务器进程已强制停止")
+                
+        except Exception as e:
+            print(f"❌ 停止MCP服务器进程时发生错误: {e}")
+        finally:
+            mcp_server_process = None
+
+async def monitor_mcp_server_output():
+    """监控MCP服务器进程的输出"""
+    global mcp_server_process
+    
+    if not mcp_server_process or not mcp_server_process.stdout:
+        return
+    
+    try:
+        # 监控stdout
+        while True:
+            line = await mcp_server_process.stdout.readline()
+            if not line:
+                break
+            # 将MCP服务器的输出添加前缀后打印
+            print(f"[MCP] {line.decode().strip()}")
+            
+    except Exception as e:
+        logger.error(f"监控MCP服务器输出时发生错误: {e}")
+
+# =========================
 # 初始化函数（从原文件移过来的）
 # =========================
 async def initialize_all_services():
@@ -38,7 +125,17 @@ async def initialize_all_services():
     try:
         print("🚀 开始初始化所有服务...")
         
-        # 1. 初始化服务管理器
+        # 1. 先启动MCP服务器
+        print("🔌 正在启动MCP服务器...")
+        mcp_started = await start_mcp_server()
+        if mcp_started:
+            print("✅ MCP服务器启动完成")
+            # 给MCP服务器一些时间完成初始化
+            await asyncio.sleep(2)
+        else:
+            print("⚠️  MCP服务器启动失败，主应用将继续运行")
+        
+        # 2. 初始化服务管理器
         print("⚙️  正在初始化服务管理器...")
         if not service_manager.initialize():
             raise Exception("服务管理器初始化失败")
@@ -75,7 +172,7 @@ async def lifespan(app: FastAPI):
     # 启动时的初始化
     logger.info("启动 AI 个人日常助手服务...")
     
-    # 初始化所有服务
+    # 初始化所有服务（包括MCP服务器）
     await initialize_all_services()
     
     # 启动心跳检测任务
@@ -93,6 +190,9 @@ async def lifespan(app: FastAPI):
     
     # 关闭时的清理
     logger.info("关闭 AI 个人日常助手服务...")
+    
+    # 先停止MCP服务器进程
+    await stop_mcp_server()
     
     # 停止心跳检测任务
     if connection_manager.heartbeat_task:
