@@ -14,7 +14,7 @@ sys.path.insert(0, str(backend_dir))
 # Now import project modules
 from agents.model_settings import ModelSettings
 from agents.extensions.models.litellm_model import LitellmModel
-from agents.mcp import MCPServer, MCPServerStreamableHttp
+from agents.mcp import MCPServerStreamableHttp
 from agents.mcp import ToolFilterContext
 from service.models.todo import Todo
 
@@ -29,19 +29,6 @@ from agents import (
     Agent,
     RunContextWrapper,
     set_tracing_disabled,
-    Runner,
-    TResponseInputItem,
-    function_tool,
-    handoff,
-    GuardrailFunctionOutput,
-    input_guardrail,
-    InputGuardrailTripwireTriggered,
-    MessageOutputItem,
-    HandoffOutputItem,
-    ItemHelpers,
-    Handoff,
-    ToolCallItem,
-    ToolCallOutputItem,
 )
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 
