@@ -179,7 +179,7 @@ class AuthUtils:
         
         # 使用全局服务管理器获取缓存的用户信息
         try:
-            from core.service_manager import service_manager
+            from service.service_manager import service_manager
             
             # 使用缓存的用户信息查找
             user_info = service_manager.get_user_cached(
@@ -290,7 +290,7 @@ class AuthService:
         """
         try:
             # 使用服务管理器的缓存验证
-            from core.service_manager import service_manager
+            from service.service_manager import service_manager
             return service_manager.verify_token_cached(token)
         except Exception:
             # 如果缓存验证失败，回退到原始方法

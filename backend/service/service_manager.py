@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from threading import RLock
 from core.database_core import DatabaseClient
 from core.vector_core import ChromaVectorClient, VectorConfig
-from core.auth import AuthService
+from core.auth_core.auth import AuthService
 
 
 class ServiceManager:
