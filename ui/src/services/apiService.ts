@@ -251,8 +251,8 @@ export const apiService = new ApiService();
 
 // 会话相关API
 export const conversationAPI = {
-  // 获取会话列表
-  async getConversations(userId: string, limit: number = 10, offset: number = 0): Promise<ApiResponse<PaginatedResponse<any>>> {
+  // 获取会话列表 - 修复返回类型
+  async getConversations(userId: string, limit: number = 10, offset: number = 0): Promise<ApiResponse<any[]>> {
     return apiService.get(API_ENDPOINTS.CONVERSATION.LIST(userId), { limit, offset });
   },
 
@@ -279,8 +279,8 @@ export const conversationAPI = {
 
 // 消息相关API
 export const messageAPI = {
-  // 获取消息列表
-  async getMessages(conversationId: string, limit: number = 10, offset: number = 0): Promise<ApiResponse<PaginatedResponse<any>>> {
+  // 获取消息列表 - 修复返回类型
+  async getMessages(conversationId: string, limit: number = 10, offset: number = 0): Promise<ApiResponse<any[]>> {
     return apiService.get(API_ENDPOINTS.MESSAGE.LIST(conversationId), { limit, offset });
   },
 

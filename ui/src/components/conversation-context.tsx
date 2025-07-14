@@ -24,8 +24,8 @@ export function ConversationContext({ context }: ConversationContextProps) {
       
       <div className="bg-white border border-gray-200 rounded-lg p-3">
         <div className="grid grid-cols-1 gap-2">
-          {contextEntries.map(([key, value]) => (
-            <div key={key} className="flex justify-between items-center">
+          {contextEntries.map(([key, value], index) => (
+            <div key={`context-${index}-${key}`} className="flex justify-between items-center">
               <span className="text-xs font-medium text-gray-600 capitalize">
                 {key.replace(/_/g, ' ')}:
               </span>

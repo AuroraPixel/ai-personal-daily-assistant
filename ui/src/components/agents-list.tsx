@@ -9,9 +9,9 @@ interface AgentsListProps {
 export function AgentsList({ agents, currentAgent }: AgentsListProps) {
   return (
     <div className="space-y-3">
-      {agents.map((agent) => (
+      {agents.map((agent, agentIndex) => (
         <div
-          key={agent.name}
+          key={`agent-${agentIndex}-${agent.name}`}
           className={`p-4 rounded-lg border-2 transition-all ${
             currentAgent === agent.name
               ? "border-blue-500 bg-blue-50"
@@ -40,8 +40,8 @@ export function AgentsList({ agents, currentAgent }: AgentsListProps) {
                 可用工具:
               </h4>
               <div className="flex flex-wrap gap-1">
-                {agent.tools.map((tool) => (
-                  <Badge key={tool} variant="outline" className="text-xs">
+                {agent.tools.map((tool, toolIndex) => (
+                  <Badge key={`tool-${agentIndex}-${toolIndex}-${tool}`} variant="outline" className="text-xs">
                     {tool}
                   </Badge>
                 ))}
@@ -55,8 +55,8 @@ export function AgentsList({ agents, currentAgent }: AgentsListProps) {
                 可转交给:
               </h4>
               <div className="flex flex-wrap gap-1">
-                {agent.handoffs.map((handoff) => (
-                  <Badge key={handoff} variant="secondary" className="text-xs">
+                {agent.handoffs.map((handoff, handoffIndex) => (
+                  <Badge key={`handoff-${agentIndex}-${handoffIndex}-${handoff}`} variant="secondary" className="text-xs">
                     {handoff}
                   </Badge>
                 ))}

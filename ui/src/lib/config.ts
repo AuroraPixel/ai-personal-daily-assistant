@@ -50,9 +50,9 @@ export const API_ENDPOINTS = {
     DELETE: (conversationId: string) => `/api/conversations/${conversationId}`,
   },
   
-  // 消息相关
+  // 消息相关 - 修复端点配置
   MESSAGE: {
-    LIST: (conversationId: string) => `/api/messages/${conversationId}`,
+    LIST: (conversationId: string) => `/api/conversations/${conversationId}/messages`,
     CREATE: '/api/messages',
   },
   

@@ -91,8 +91,8 @@ export function RunnerOutput({ runnerEvents }: RunnerOutputProps) {
                 {event.metadata && (
                   <div className="mt-2 p-2 bg-white bg-opacity-50 rounded text-xs">
                     <div className="font-medium text-gray-700 mb-1">元数据:</div>
-                    {Object.entries(event.metadata).map(([key, value]) => (
-                      <div key={key} className="flex justify-between">
+                    {Object.entries(event.metadata).map(([key, value], index) => (
+                      <div key={`metadata-${event.id}-${index}-${key}`} className="flex justify-between">
                         <span className="text-gray-600">{key}:</span>
                         <span className="text-gray-900 font-mono">
                           {typeof value === 'string' ? value : JSON.stringify(value)}

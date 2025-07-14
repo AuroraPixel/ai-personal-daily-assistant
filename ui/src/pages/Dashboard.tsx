@@ -4,11 +4,11 @@ import { logout } from "../store/slices/authSlice";
 import { AgentPanel } from "../components/agent-panel";
 import { Chat } from "../components/Chat";
 import { DevPanel } from "../components/dev-panel";
-import { WebSocketTester } from "../components/WebSocketTester";
+
 import ErrorBoundary from "../components/ErrorBoundary";
 import type { Agent, AgentEvent, GuardrailCheck, Message } from "../lib/types";
 import { createWebSocketService, getWebSocketService, type WebSocketConnectionStatus } from "../lib/websocket";
-import { Bot, MessageCircle, Wifi, WifiOff, RefreshCw, AlertTriangle, LogOut, User, Settings } from "lucide-react";
+import { Bot, MessageCircle, Wifi, WifiOff, RefreshCw, AlertTriangle, LogOut, User } from "lucide-react";
 import { Button } from "../components/ui/button";
 
 const Dashboard: React.FC = () => {
@@ -28,8 +28,6 @@ const Dashboard: React.FC = () => {
   const [wsStatus, setWsStatus] = useState<WebSocketConnectionStatus>('disconnected');
   const [streamingResponse, setStreamingResponse] = useState<string>('');
   const [wsError, setWsError] = useState<string>('');
-  const [debugInfo, setDebugInfo] = useState<string[]>([]);
-  const [showTester, setShowTester] = useState<boolean>(false);
 
   // 设置WebSocket事件监听器
   useEffect(() => {
@@ -60,7 +58,6 @@ const Dashboard: React.FC = () => {
       const handleStatus = (status: WebSocketConnectionStatus) => {
         console.log('📡 Dashboard 收到状态更新:', status);
         setWsStatus(status);
-        setDebugInfo(prev => [...prev, `状态更新: ${status} - ${new Date().toLocaleTimeString()}`]);
         
         if (status === 'connected') {
           setWsError('');
@@ -72,7 +69,6 @@ const Dashboard: React.FC = () => {
         console.log('🎉 WebSocket连接成功:', content);
         setWsStatus('connected');
         setWsError('');
-        setDebugInfo(prev => [...prev, `连接成功 - ${new Date().toLocaleTimeString()}`]);
       };
       
       // 监听连接错误事件
@@ -81,7 +77,6 @@ const Dashboard: React.FC = () => {
         setWsStatus('error');
         const errorMsg = content?.error || '未知错误';
         setWsError(errorMsg);
-        setDebugInfo(prev => [...prev, `连接错误: ${errorMsg} - ${new Date().toLocaleTimeString()}`]);
         
         // 重置loading状态
         setIsLoading(false);
@@ -94,7 +89,6 @@ const Dashboard: React.FC = () => {
         setWsStatus('error');
         const errorMsg = content?.error || '认证失败';
         setWsError(errorMsg);
-        setDebugInfo(prev => [...prev, `认证错误: ${errorMsg} - ${new Date().toLocaleTimeString()}`]);
         
         // 重置loading状态
         setIsLoading(false);
@@ -105,7 +99,6 @@ const Dashboard: React.FC = () => {
       const handleAIError = (content: any) => {
         console.error('❌ AI处理错误:', content);
         const errorMsg = content?.error || 'AI处理失败';
-        setDebugInfo(prev => [...prev, `AI错误: ${errorMsg} - ${new Date().toLocaleTimeString()}`]);
         
         // 重置loading状态
         setIsLoading(false);
@@ -248,20 +241,16 @@ const Dashboard: React.FC = () => {
       
       // 建立连接
       console.log('🔌 开始建立WebSocket连接...');
-      setDebugInfo(prev => [...prev, `开始连接WebSocket - ${new Date().toLocaleTimeString()}`]);
-      setDebugInfo(prev => [...prev, `用户ID: ${userId}, 用户名: ${user.username}`]);
       
       wsService.connect()
         .then(() => {
           console.log('✅ WebSocket连接建立成功');
-          setDebugInfo(prev => [...prev, `连接建立成功 - ${new Date().toLocaleTimeString()}`]);
         })
         .catch((error) => {
           console.error('❌ WebSocket连接失败:', error);
           setWsStatus('error');
           const errorMsg = error?.message || '连接失败';
           setWsError(errorMsg);
-          setDebugInfo(prev => [...prev, `连接失败: ${errorMsg} - ${new Date().toLocaleTimeString()}`]);
         });
       
       // 清理函数
@@ -304,8 +293,42 @@ const Dashboard: React.FC = () => {
       setIsLoading(true);
       
       try {
-        // 这里可以添加获取历史消息的逻辑
+        // 获取会话历史消息
         console.log('📜 获取会话历史消息:', selectedConversationId);
+        
+        // 动态导入 messageAPI
+        const { messageAPI } = await import('../services/apiService');
+        
+        // 获取历史消息
+        const response = await messageAPI.getMessages(selectedConversationId, 50, 0);
+        
+        if (response.success && response.data) {
+          // 转换消息格式
+          const historyMessages: Message[] = response.data.map((msg: any) => ({
+            id: msg.id.toString(),
+            content: msg.content,
+            type: (msg.sender_type === 'human' ? 'user' : 'ai') as 'user' | 'ai' | 'system',
+            agent: msg.sender_type === 'human' ? 'user' : (msg.sender_id || 'ai'),
+            timestamp: new Date(msg.created_at || Date.now()),
+          }));
+          
+          // 按时间正序排序（最老的在前面）
+          historyMessages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+          
+          // 设置消息
+          setMessages(historyMessages);
+          
+          // 缓存消息
+          setConversationMessages(prev => ({
+            ...prev,
+            [selectedConversationId]: historyMessages
+          }));
+          
+          console.log('✅ 成功获取历史消息:', historyMessages.length, '条');
+        } else {
+          console.warn('获取历史消息失败:', response.message);
+        }
+        
         setIsLoading(false);
       } catch (error) {
         console.error('获取会话历史消息失败:', error);
@@ -417,7 +440,6 @@ const Dashboard: React.FC = () => {
                   <button
                     onClick={() => {
                       console.log('🔄 手动重连WebSocket...');
-                      setDebugInfo(prev => [...prev, `手动重连WebSocket - ${new Date().toLocaleTimeString()}`]);
                       
                       if (user && token) {
                         const userId = typeof user.user_id === 'string' ? user.user_id : String(user.user_id);
@@ -425,11 +447,9 @@ const Dashboard: React.FC = () => {
                         wsService.connect()
                           .then(() => {
                             console.log('✅ 手动重连成功');
-                            setDebugInfo(prev => [...prev, `手动重连成功 - ${new Date().toLocaleTimeString()}`]);
                           })
                           .catch((error) => {
                             console.error('❌ 手动重连失败:', error);
-                            setDebugInfo(prev => [...prev, `手动重连失败: ${error.message} - ${new Date().toLocaleTimeString()}`]);
                           });
                       }
                     }}
@@ -448,30 +468,7 @@ const Dashboard: React.FC = () => {
                   {user?.username || '用户'}
                 </span>
               </div>
-              {/* 调试信息按钮 */}
-              {debugInfo.length > 0 && (
-                <div className="relative group">
-                  <button className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 bg-gray-100 rounded">
-                    调试信息
-                  </button>
-                  <div className="absolute right-0 top-full mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg p-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <div className="text-xs text-gray-600 space-y-1 max-h-40 overflow-y-auto">
-                      {debugInfo.slice(-10).map((info, index) => (
-                        <div key={index} className="font-mono">{info}</div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {/* WebSocket测试器按钮 */}
-              <button
-                onClick={() => setShowTester(true)}
-                className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 bg-gray-100 rounded border border-gray-200 hover:bg-gray-200 flex items-center gap-1"
-                title="WebSocket连接测试器"
-              >
-                <Settings className="w-3 h-3" />
-                测试器
-              </button>
+
               <Button
                 variant="ghost"
                 size="sm"
@@ -575,14 +572,7 @@ const Dashboard: React.FC = () => {
              </div>
           </div>
         </div>
-        
-        {/* WebSocket测试器 */}
-        {showTester && (
-          <WebSocketTester
-            isOpen={showTester}
-            onClose={() => setShowTester(false)}
-          />
-        )}
+
       </div>
     </ErrorBoundary>
   );

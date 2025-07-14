@@ -58,9 +58,9 @@ export function DevPanel({ onSendMessage }: DevPanelProps) {
         <div className="text-xs text-gray-600 mb-2">
           快速测试场景：
         </div>
-        {testScenarios.map((scenario) => (
+        {testScenarios.map((scenario, index) => (
           <button
-            key={scenario.name}
+            key={`scenario-${index}-${scenario.name}`}
             onClick={() => onSendMessage(scenario.message)}
             className="w-full text-left px-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 rounded border transition-colors"
           >

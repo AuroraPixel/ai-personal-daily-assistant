@@ -53,13 +53,15 @@ export function ConversationList({
       const response = await conversationAPI.getConversations(userId.toString(), ITEMS_PER_PAGE, offset);
       
       if (reset) {
-        setConversations(response.data.data || []);
+        setConversations(response.data || []);
         setPage(0);
       } else {
-        setConversations(prev => [...prev, ...(response.data.data || [])]);
+        setConversations(prev => [...prev, ...(response.data || [])]);
       }
       
-      setHasMore(response.data.has_more || false);
+      // 检查是否还有更多数据 - 如果返回的数据量小于请求的数量，说明没有更多了
+      const hasMoreData = (response.data || []).length >= ITEMS_PER_PAGE;
+      setHasMore(hasMoreData);
       setPage(prev => prev + 1);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '获取会话列表失败';
