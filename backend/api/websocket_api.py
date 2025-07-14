@@ -91,7 +91,6 @@ user_conversations: Dict[str, str] = {}
 # 全局服务实例（从service_manager获取）
 db_client: Optional[DatabaseClient] = None
 assistant_manager: Optional[PersonalAssistantManager] = None
-session_manager: Optional[AgentSessionManager] = None
 
 # =========================
 # 辅助函数
@@ -189,7 +188,7 @@ def _get_agent_by_name(name: str):
 
 async def ensure_services_initialized():
     """确保服务已初始化"""
-    global db_client, assistant_manager, session_manager
+    global db_client, assistant_manager
     
     if db_client is None:
         db_client = service_manager.get_db_client()
@@ -202,13 +201,18 @@ async def ensure_services_initialized():
             mcp_server_url="http://localhost:8002/mcp"
         )
         await assistant_manager.initialize()
-    
-    if session_manager is None:
-        session_manager = AgentSessionManager(
-            db_client=db_client,
-            default_user_id=1,
-            max_messages=100
-        )
+
+def get_session_manager_for_user(user_id: int) -> AgentSessionManager:
+    """为特定用户创建会话管理器"""
+    # 使用service_manager提供的统一数据库客户端
+    shared_db_client = service_manager.get_db_client()
+    if shared_db_client is None:
+        raise RuntimeError("数据库客户端未初始化")
+    return AgentSessionManager(
+        db_client=shared_db_client,
+        default_user_id=user_id,  # 使用真实的用户ID
+        max_messages=100
+    )
 
 # =========================
 # 流式处理函数
@@ -220,12 +224,14 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
         # 确保服务已初始化
         await ensure_services_initialized()
         
-        # 检查服务是否初始化
-        if session_manager is None:
-            logger.error("会话管理器未初始化")
+        # 获取用户特定的会话管理器
+        try:
+            session_manager = get_session_manager_for_user(int(user_id))
+        except Exception as e:
+            logger.error(f"创建会话管理器失败: {e}")
             error_message = WebSocketMessage(
                 type=MessageType.AI_ERROR,
-                content={"error": "会话管理器未初始化", "details": "服务启动失败"},
+                content={"error": "创建会话管理器失败", "details": str(e)},
                 sender_id="system",
                 receiver_id=None,
                 room_id=f"user_{str(user_id)}_room"
@@ -573,13 +579,13 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
         
         # 尝试保存错误信息到会话（如果会话存在）
         try:
-            if session_manager is not None:
-                conversation_id = f"user_{user_id}_conversation"
-                agent_session = await session_manager.get_session(conversation_id)
-                if agent_session is not None:
-                    error_info = f"处理错误: {str(e)}"
-                    await agent_session.save_message(error_info, "assistant")
-                    logger.info(f"✅ 已保存错误信息到会话: {conversation_id}")
+            error_session_manager = get_session_manager_for_user(int(user_id))
+            conversation_id = f"user_{user_id}_conversation"
+            agent_session = await error_session_manager.get_session(conversation_id)
+            if agent_session is not None:
+                error_info = f"处理错误: {str(e)}"
+                await agent_session.save_message(error_info, "assistant")
+                logger.info(f"✅ 已保存错误信息到会话: {conversation_id}")
         except Exception as save_error:
             logger.error(f"保存错误信息到会话失败: {save_error}")
         

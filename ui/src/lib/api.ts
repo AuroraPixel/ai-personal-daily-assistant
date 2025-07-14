@@ -55,7 +55,7 @@ class WebSocketAPI {
   private resolveResponse: ((value: any) => void) | null = null;
   private rejectResponse: ((reason?: any) => void) | null = null;
 
-  async initializeWebSocket(userId: string = DEFAULT_USER_ID, username?: string): Promise<void> {
+  async initializeWebSocket(userId: string, username?: string): Promise<void> {
     const wsService = createWebSocketService(userId, username);
     
     // 监听AI响应事件
@@ -209,9 +209,10 @@ export async function callChatAPI(message: string, conversationId: string) {
   if (USE_WEBSOCKET) {
     try {
       // 如果是首次调用（空消息），初始化WebSocket
+      // 注意：这个函数现在已废弃，因为WebSocket在Dashboard中直接管理
       if (!message && !conversationId) {
-        await wsAPI.initializeWebSocket();
-        return wsAPI.getInitialResponse();
+        console.warn('callChatAPI: 此函数已废弃，请在Dashboard中直接使用WebSocket服务');
+        return null;
       }
       
       // 发送消息

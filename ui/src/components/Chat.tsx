@@ -5,7 +5,7 @@ import { SeatMap } from "./seat-map";
 import type { WebSocketConnectionStatus } from "../lib/websocket";
 import { Wifi, WifiOff, RefreshCw, Send, AlertCircle, Menu } from "lucide-react";
 import { ConversationList } from "./ConversationList";
-import { DEFAULT_USER_ID } from "../lib/config";
+import { useAppSelector } from "../store/hooks";
 
 // 打字机效果的样式
 const typewriterStyles = `
@@ -50,6 +50,7 @@ export function Chat({
   conversationId,
   onSelectConversation
 }: ChatProps) {
+  const { user } = useAppSelector((state) => state.auth);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [inputText, setInputText] = useState("");
   const [isComposing, setIsComposing] = useState(false);
@@ -342,7 +343,7 @@ export function Chat({
         onClose={() => setShowConversationList(false)}
         onSelectConversation={handleConversationSelect}
         currentConversationId={conversationId || null}
-        userId={parseInt(DEFAULT_USER_ID)}
+        userId={user?.user_id ? parseInt(String(user.user_id)) : 1}
       />
     </div>
   );

@@ -19,6 +19,7 @@ from service.services.conversation_service import ConversationService
 from service.services.chat_message_service import ChatMessageService
 from service.models.chat_message import ChatMessage
 from service.models.conversation import Conversation
+from service.service_manager import service_manager
 
 
 class AgentSession:
@@ -41,10 +42,18 @@ class AgentSession:
         self.user_id = user_id
         self.max_messages = max_messages
         
-        # 数据库服务
+        # 数据库服务 - 使用service_manager提供的统一服务
         self.db_client = db_client
-        self.conversation_service = ConversationService(self.db_client)
-        self.chat_message_service = ChatMessageService(self.db_client)
+        self.conversation_service = service_manager.get_service(
+            'conversation_service', 
+            ConversationService, 
+            db_client=self.db_client
+        )
+        self.chat_message_service = service_manager.get_service(
+            'chat_message_service', 
+            ChatMessageService, 
+            db_client=self.db_client
+        )
         
         # 内存缓存
         self._message_cache: List[ChatMessage] = []
@@ -411,6 +420,7 @@ class AgentSession:
     def close(self):
         """
         关闭会话管理器，释放资源
+        注意：不关闭共享的数据库连接，因为它可能被其他会话使用
         """
         if self._closed:
             return
@@ -419,13 +429,8 @@ class AgentSession:
             # 清空缓存
             self.clear_cache()
             
-            # 关闭数据库连接
-            if self.conversation_service:
-                self.conversation_service.close()
-            if self.chat_message_service:
-                self.chat_message_service.close()
-            if self.db_client:
-                self.db_client.close()
+            # 注意：不关闭共享的数据库连接和服务
+            # 保持服务引用，让service_manager管理数据库连接生命周期
             
             self._closed = True
             self._initialized = False
