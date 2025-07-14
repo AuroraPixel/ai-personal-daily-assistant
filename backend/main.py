@@ -261,26 +261,6 @@ if os.path.exists(static_dir):
         else:
             return {"message": "AI 个人日常助手 API 服务", "static_files": "前端文件未找到"}
     
-    # 为前端路由添加回退处理（支持单页应用路由）
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_frontend_routes(full_path: str):
-        """为前端单页应用提供路由回退"""
-        # 如果是API路径，让它正常处理
-        if full_path.startswith("api/") or full_path.startswith("ws"):
-            return {"error": "路径未找到"}
-        
-        # 检查是否存在对应的静态文件
-        file_path = os.path.join(static_dir, full_path)
-        if os.path.exists(file_path) and os.path.isfile(file_path):
-            return FileResponse(file_path)
-        
-        # 对于其他路径，返回index.html（单页应用路由）
-        index_file = os.path.join(static_dir, "index.html")
-        if os.path.exists(index_file):
-            return FileResponse(index_file)
-        else:
-            return {"error": "文件未找到"}
-
 # =========================
 # 注册所有路由器
 # =========================
@@ -299,6 +279,26 @@ app.include_router(conversation_router, prefix="/api")
 
 # WebSocket路由器（包含所有WebSocket相关端点）
 app.include_router(websocket_router)
+
+# 为前端路由添加回退处理（支持单页应用路由）
+# 注意：这个路由必须在所有API路由注册之后，以避免拦截API请求
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_frontend_routes(full_path: str):
+    """为前端单页应用提供路由回退"""
+    # 检查是否存在对应的静态文件
+    file_path = os.path.join(static_dir, full_path)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return FileResponse(file_path)
+    
+    # 对于非API路径，返回index.html（单页应用路由）
+    # 这样前端路由（如 /dashboard, /login 等）会正确显示
+    if not full_path.startswith("api/") and not full_path.startswith("ws"):
+        index_file = os.path.join(static_dir, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+    
+    # 如果是API路径但没有匹配的处理器，返回404
+    return {"error": "路径未找到"}
 
 # =========================
 # 主程序入口
