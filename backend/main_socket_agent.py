@@ -11,8 +11,20 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Path, Form, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
+from core.api_response import (
+    ErrorCode, 
+    ResponseBuilder, 
+    JsonResponseBuilder,
+    success_response,
+    error_response,
+    invalid_credentials_response,
+    unauthorized_response,
+    not_found_response,
+    internal_error_response
+)
 import asyncio
 from agent.personal_assistant_manager import PersonalAssistantManager, PersonalAssistantContext
 # 导入会话管理器
@@ -201,6 +213,7 @@ def _get_guardrail_name(g) -> str:
 def _get_agent_by_name(name: str):
     """Return the agent object by name."""
     if assistant_manager is None:
+        logger.error("Assistant manager not initialized when trying to get agent")
         raise RuntimeError("Assistant manager not initialized")
     
     try:
@@ -214,13 +227,21 @@ def _get_agent_by_name(name: str):
         }
         
         if name in agent_mapping:
-            return agent_mapping[name]()
+            agent = agent_mapping[name]()
+            logger.info(f"Successfully retrieved agent: {name}")
+            return agent
         else:
             # 默认返回任务调度中心
+            logger.warning(f"Agent '{name}' not found, returning Triage Agent")
             return assistant_manager.get_triage_agent()
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error getting agent '{name}': {e}")
         # 如果获取失败，返回任务调度中心
-        return assistant_manager.get_triage_agent()
+        try:
+            return assistant_manager.get_triage_agent()
+        except Exception as fallback_error:
+            logger.error(f"Failed to get fallback Triage Agent: {fallback_error}")
+            raise RuntimeError(f"Failed to get any agent: {fallback_error}")
 
 # =========================
 # 流式处理函数
@@ -228,21 +249,87 @@ def _get_agent_by_name(name: str):
 async def handle_stream_chat(user_id: str, message: str, connection_id: str, authenticated_user: Optional[Dict[str, Any]] = None) -> None:
     """处理流式聊天消息"""
     try:
-        # 检查会话管理器是否初始化
+        # 检查服务是否初始化
         if session_manager is None:
             logger.error("会话管理器未初始化")
+            error_message = WebSocketMessage(
+                type=MessageType.AI_ERROR,
+                content={"error": "会话管理器未初始化", "details": "服务启动失败"},
+                sender_id="system",
+                receiver_id=None,
+                room_id=f"user_{str(user_id)}_room"
+            )
+            await connection_manager.send_to_connection(connection_id, error_message)
+            return
+        
+        if assistant_manager is None:
+            logger.error("助手管理器未初始化")
+            error_message = WebSocketMessage(
+                type=MessageType.AI_ERROR,
+                content={"error": "助手管理器未初始化", "details": "服务启动失败"},
+                sender_id="system",
+                receiver_id=None,
+                room_id=f"user_{str(user_id)}_room"
+            )
+            await connection_manager.send_to_connection(connection_id, error_message)
             return
         
         # 初始化用户上下文
-        ctx = initialize_context(int(user_id))
-        triage_agent = _get_agent_by_name("Triage Agent")
+        try:
+            ctx = initialize_context(int(user_id))
+            logger.info(f"用户 {user_id} 上下文初始化成功")
+        except Exception as e:
+            logger.error(f"初始化用户上下文失败: {e}")
+            error_message = WebSocketMessage(
+                type=MessageType.AI_ERROR,
+                content={"error": "初始化用户上下文失败", "details": str(e)},
+                sender_id="system",
+                receiver_id=None,
+                room_id=f"user_{str(user_id)}_room"
+            )
+            await connection_manager.send_to_connection(connection_id, error_message)
+            return
+
+        try:
+            triage_agent = _get_agent_by_name("Triage Agent")
+            logger.info(f"成功获取Triage Agent")
+        except Exception as e:
+            logger.error(f"获取Triage Agent失败: {e}")
+            error_message = WebSocketMessage(
+                type=MessageType.AI_ERROR,
+                content={"error": "获取AI代理失败", "details": str(e)},
+                sender_id="system",
+                receiver_id=None,
+                room_id=f"user_{str(user_id)}_room"
+            )
+            await connection_manager.send_to_connection(connection_id, error_message)
+            return
         
         # 创建或获取会话 - 使用传入的会话ID或默认会话ID
         conversation_id = user_conversations.get(user_id) or uuid4().hex
-        agent_session = await session_manager.get_session(conversation_id)
-        
-        if agent_session is None:
-            logger.error(f"无法创建或获取会话: {conversation_id}")
+        try:
+            agent_session = await session_manager.get_session(conversation_id)
+            if agent_session is None:
+                logger.error(f"无法创建或获取会话: {conversation_id}")
+                error_message = WebSocketMessage(
+                    type=MessageType.AI_ERROR,
+                    content={"error": "无法创建会话", "details": f"会话ID: {conversation_id}"},
+                    sender_id="system",
+                    receiver_id=None,
+                    room_id=f"user_{str(user_id)}_room"
+                )
+                await connection_manager.send_to_connection(connection_id, error_message)
+                return
+        except Exception as e:
+            logger.error(f"创建或获取会话时发生错误: {e}")
+            error_message = WebSocketMessage(
+                type=MessageType.AI_ERROR,
+                content={"error": "创建会话失败", "details": str(e)},
+                sender_id="system",
+                receiver_id=None,
+                room_id=f"user_{str(user_id)}_room"
+            )
+            await connection_manager.send_to_connection(connection_id, error_message)
             return
         
         # 设置会话上下文
@@ -261,8 +348,21 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
             logger.debug(f"  {i+1}. [{item.get('role', 'unknown')}]: {item.get('content', '')[:50]}{'...' if len(item.get('content', '')) > 50 else ''}")
         
         # 处理流式响应，传入完整的会话历史
-        print(f"🔄 用户 {user_id} 会话历史消息: {input_items}")
-        result = Runner.run_streamed(triage_agent, input=input_items, context=ctx)
+        logger.info(f"🔄 用户 {user_id} 会话历史消息: {input_items}")
+        try:
+            result = Runner.run_streamed(triage_agent, input=input_items, context=ctx)
+            logger.info(f"成功启动流式处理: 用户 {user_id}")
+        except Exception as e:
+            logger.error(f"启动流式处理失败: {e}")
+            error_message = WebSocketMessage(
+                type=MessageType.AI_ERROR,
+                content={"error": "启动AI处理失败", "details": str(e)},
+                sender_id="system",
+                receiver_id=None,
+                room_id=f"user_{str(user_id)}_room"
+            )
+            await connection_manager.send_to_connection(connection_id, error_message)
+            return
         
         # 初始化一个ChatResponse对象
         chat_response = ChatResponse(
@@ -279,19 +379,73 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
         # 用于收集助手回复的内容
         assistant_messages = []
         
-        # 获取用户房间ID
-        room_id = user_rooms.get(user_id)
-        if not room_id:
-            return
+        # 获取用户房间ID - 动态构建，不依赖全局变量
+        user_id_str = str(user_id)
+        room_id = f"user_{user_id_str}_room"
+        logger.info(f"使用用户 {user_id_str} 的房间ID: {room_id}")
             
-        async for event in result.stream_events():
-            # Handle raw responses event deltas
-            if event.type == "raw_response_event":
-                # 检查是否是 response.output_text.delta 类型
-                if hasattr(event.data, 'type') and event.data.type == 'response.output_text.delta':
-                    # 将 delta 内容追加到 raw_response 中
-                    if hasattr(event.data, 'delta') and event.data.delta:
-                        chat_response.raw_response += event.data.delta
+        try:
+            async for event in result.stream_events():
+                # Handle raw responses event deltas
+                if event.type == "raw_response_event":
+                    # 检查是否是 response.output_text.delta 类型
+                    if hasattr(event.data, 'type') and event.data.type == 'response.output_text.delta':
+                        # 将 delta 内容追加到 raw_response 中
+                        if hasattr(event.data, 'delta') and event.data.delta:
+                            chat_response.raw_response += event.data.delta
+                            
+                            # 发送更新的ChatResponse
+                            response_message = WebSocketMessage(
+                                type=MessageType.AI_RESPONSE,
+                                content=chat_response.model_dump(),
+                                sender_id="system",
+                                receiver_id=None,
+                                room_id=room_id
+                            )
+                            await connection_manager.send_to_connection(connection_id, response_message)
+                    continue
+                
+                # Check if this is a streaming event
+                if event.type == "stream_event":
+                    # Process streaming event
+                    
+                    # 检查是否是 response.output_text.delta 类型
+                    if hasattr(event.data, 'type') and event.data.type == 'response.output_text.delta':
+                        # 将 delta 内容追加到 raw_response 中
+                        if hasattr(event.data, 'delta') and event.data.delta:
+                            chat_response.raw_response += event.data.delta
+                            
+                            # 发送更新的ChatResponse
+                            response_message = WebSocketMessage(
+                                type=MessageType.AI_RESPONSE,
+                                content=chat_response.model_dump(),
+                                sender_id="system",
+                                receiver_id=None,
+                                room_id=room_id
+                            )
+                            await connection_manager.send_to_connection(connection_id, response_message)
+                    continue
+                
+                # Handle items
+                if event.type == "run_item_stream_event" and hasattr(event, 'item'):
+                    item = event.item
+                    
+                    if isinstance(item, MessageOutputItem):
+                        # 处理消息输出项
+                        text = ItemHelpers.text_message_output(item)
+                        message_response = MessageResponse(content=text, agent=item.agent.name)
+                        chat_response.messages.append(message_response)
+                        
+                        # 保存助手消息到会话
+                        assistant_messages.append(text)
+                        
+                        agent_event = AgentEvent(
+                            id=uuid4().hex,
+                            type="message",
+                            agent=item.agent.name,
+                            content=text
+                        )
+                        chat_response.events.append(agent_event)
                         
                         # 发送更新的ChatResponse
                         response_message = WebSocketMessage(
@@ -302,204 +456,142 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
                             room_id=room_id
                         )
                         await connection_manager.send_to_connection(connection_id, response_message)
-                continue
-                
-            # When the agent updates, print that
-            elif event.type == "agent_updated_stream_event":
-                # 更新current_agent
-                chat_response.current_agent = event.new_agent.name
-                
-                # 发送更新的ChatResponse
-                response_message = WebSocketMessage(
-                    type=MessageType.AI_RESPONSE,
-                    content=chat_response.model_dump(),
-                    sender_id="system",
-                    receiver_id=None,
-                    room_id=room_id
-                )
-                await connection_manager.send_to_connection(connection_id, response_message)
-                continue
-                
-            # When items are generated, print them
-            elif event.type == "run_item_stream_event":
-                item = event.item
-                
-                if isinstance(item, MessageOutputItem):
-                    # 处理消息输出项
-                    text = ItemHelpers.text_message_output(item)
-                    message_response = MessageResponse(content=text, agent=item.agent.name)
-                    chat_response.messages.append(message_response)
-                    
-                    # 保存助手消息到会话
-                    assistant_messages.append(text)
-                    
-                    agent_event = AgentEvent(
-                        id=uuid4().hex,
-                        type="message",
-                        agent=item.agent.name,
-                        content=text
-                    )
-                    chat_response.events.append(agent_event)
-                    
-                    # 发送更新的ChatResponse
-                    response_message = WebSocketMessage(
-                        type=MessageType.AI_RESPONSE,
-                        content=chat_response.model_dump(),
-                        sender_id="system",
-                        receiver_id=None,
-                        room_id=room_id
-                    )
-                    await connection_manager.send_to_connection(connection_id, response_message)
-                    
-                elif isinstance(item, HandoffOutputItem):
-                    # 处理移交输出项
-                    handoff_event = AgentEvent(
-                        id=uuid4().hex,
-                        type="handoff",
-                        agent=item.source_agent.name,
-                        content=f"{item.source_agent.name} -> {item.target_agent.name}",
-                        metadata={"source_agent": item.source_agent.name, "target_agent": item.target_agent.name}
-                    )
-                    chat_response.events.append(handoff_event)
-                    
-                    # 处理handoff回调
-                    from_agent = item.source_agent
-                    to_agent = item.target_agent
-                    ho = next(
-                        (h for h in getattr(from_agent, "handoffs", [])
-                         if isinstance(h, Handoff) and getattr(h, "agent_name", None) == to_agent.name),
-                        None,
-                    )
-                    if ho:
-                        fn = ho.on_invoke_handoff
-                        fv = fn.__code__.co_freevars
-                        cl = fn.__closure__ or []
-                        if "on_handoff" in fv:
-                            idx = fv.index("on_handoff")
-                            if idx < len(cl) and cl[idx].cell_contents:
-                                cb = cl[idx].cell_contents
-                                cb_name = getattr(cb, "__name__", repr(cb))
-                                callback_event = AgentEvent(
-                                    id=uuid4().hex,
-                                    type="tool_call",
-                                    agent=to_agent.name,
-                                    content=cb_name,
-                                )
-                                chat_response.events.append(callback_event)
-                    
-                    # 更新current_agent
-                    chat_response.current_agent = item.target_agent.name
-                    
-                    # 发送更新的ChatResponse
-                    response_message = WebSocketMessage(
-                        type=MessageType.AI_RESPONSE,
-                        content=chat_response.model_dump(),
-                        sender_id="system",
-                        receiver_id=None,
-                        room_id=room_id
-                    )
-                    await connection_manager.send_to_connection(connection_id, response_message)
-                    
-                elif isinstance(item, ToolCallItem):
-                    # 处理工具调用项
-                    tool_name = getattr(item.raw_item, "name", None)
-                    raw_args = getattr(item.raw_item, "arguments", None)
-                    tool_args: Any = raw_args
-                    if isinstance(raw_args, str):
-                        try:
-                            import json
-                            tool_args = json.loads(raw_args)
-                        except Exception:
-                            pass
-                    
-                    tool_call_event = AgentEvent(
-                        id=uuid4().hex,
-                        type="tool_call",
-                        agent=item.agent.name,
-                        content=tool_name or "",
-                        metadata={"tool_args": tool_args}
-                    )
-                    chat_response.events.append(tool_call_event)
-                    
-                    # 特殊处理display_seat_map
-                    if tool_name == "display_seat_map":
-                        seat_map_message = MessageResponse(
-                            content="DISPLAY_SEAT_MAP",
+                        
+                    elif isinstance(item, HandoffOutputItem):
+                        # 处理切换代理项
+                        # 更新当前代理
+                        chat_response.current_agent = item.agent.name
+                        
+                        # 添加代理切换事件
+                        agent_event = AgentEvent(
+                            id=uuid4().hex,
+                            type="handoff",
                             agent=item.agent.name,
+                            content=f"切换到 {item.agent.name}"
                         )
-                        chat_response.messages.append(seat_map_message)
-                    
-                    # 发送更新的ChatResponse
-                    response_message = WebSocketMessage(
-                        type=MessageType.AI_RESPONSE,
-                        content=chat_response.model_dump(),
-                        sender_id="system",
-                        receiver_id=None,
-                        room_id=room_id
-                    )
-                    await connection_manager.send_to_connection(connection_id, response_message)
-                    
-                elif isinstance(item, ToolCallOutputItem):
-                    # 处理工具调用输出项
-                    tool_output_event = AgentEvent(
-                        id=uuid4().hex,
-                        type="tool_output",
-                        agent=item.agent.name,
-                        content=str(item.output),
-                        metadata={"tool_result": item.output}
-                    )
-                    chat_response.events.append(tool_output_event)
-                    
-                    # 发送更新的ChatResponse
-                    response_message = WebSocketMessage(
-                        type=MessageType.AI_RESPONSE,
-                        content=chat_response.model_dump(),
-                        sender_id="system",
-                        receiver_id=None,
-                        room_id=room_id
-                    )
-                    await connection_manager.send_to_connection(connection_id, response_message)
-        
-        chat_response.is_finished = True
-                    
-        # 保存助手的完整回复到会话
-        full_assistant_response = ""
-        if assistant_messages:
-            full_assistant_response = "\n".join(assistant_messages)
-            await agent_session.save_message(full_assistant_response, "assistant")
-            logger.info(f"✅ 已保存助手回复到会话: {conversation_id}")
-        
-        # 更新会话状态
-        final_state = {
-            "input_items": [
-                {"content": message, "role": "user"},
-                {"content": full_assistant_response, "role": "assistant"}
-            ] if assistant_messages else [{"content": message, "role": "user"}],
-            "context": ctx,
-            "current_agent": chat_response.current_agent
-        }
-        
-        await session_manager.save(conversation_id, final_state)
-        logger.info(f"✅ 已保存会话状态到数据库")
-        
-        # 显示会话信息
-        conversation_info = agent_session.get_conversation_info()
-        if conversation_info:
-            logger.info(f"💬 会话信息: {conversation_info['title']} (消息数: {conversation_info['message_count']})")
-        
-        # 发送完成消息
-        completion_message = WebSocketMessage(
-            type=MessageType.AI_RESPONSE,
-            content={
-                "type": "completion",
-                "final_response": chat_response.model_dump(),
-                "message": "对话完成"
-            },
-            sender_id="system",
-            receiver_id=None,
-            room_id=room_id
-        )
-        await connection_manager.send_to_connection(connection_id, completion_message)
+                        chat_response.events.append(agent_event)
+                        
+                        # 发送更新的ChatResponse
+                        response_message = WebSocketMessage(
+                            type=MessageType.AI_RESPONSE,
+                            content=chat_response.model_dump(),
+                            sender_id="system",
+                            receiver_id=None,
+                            room_id=room_id
+                        )
+                        await connection_manager.send_to_connection(connection_id, response_message)
+                        
+                    elif isinstance(item, ToolCallItem):
+                        # 处理工具调用项
+                        tool_name = getattr(item.raw_item, "name", None)
+                        raw_args = getattr(item.raw_item, "arguments", None)
+                        tool_args: Any = raw_args
+                        if isinstance(raw_args, str):
+                            try:
+                                import json
+                                tool_args = json.loads(raw_args)
+                            except Exception:
+                                pass
+                        
+                        tool_call_event = AgentEvent(
+                            id=uuid4().hex,
+                            type="tool_call",
+                            agent=item.agent.name,
+                            content=tool_name or "",
+                            metadata={"tool_args": tool_args}
+                        )
+                        chat_response.events.append(tool_call_event)
+                        
+                        # 特殊处理display_seat_map
+                        if tool_name == "display_seat_map":
+                            seat_map_message = MessageResponse(
+                                content="DISPLAY_SEAT_MAP",
+                                agent=item.agent.name,
+                            )
+                            chat_response.messages.append(seat_map_message)
+                        
+                        # 发送更新的ChatResponse
+                        response_message = WebSocketMessage(
+                            type=MessageType.AI_RESPONSE,
+                            content=chat_response.model_dump(),
+                            sender_id="system",
+                            receiver_id=None,
+                            room_id=room_id
+                        )
+                        await connection_manager.send_to_connection(connection_id, response_message)
+                        
+                    elif isinstance(item, ToolCallOutputItem):
+                        # 处理工具调用输出项
+                        tool_output_event = AgentEvent(
+                            id=uuid4().hex,
+                            type="tool_output",
+                            agent=item.agent.name,
+                            content=str(item.output),
+                            metadata={"tool_result": item.output}
+                        )
+                        chat_response.events.append(tool_output_event)
+                        
+                        # 发送更新的ChatResponse
+                        response_message = WebSocketMessage(
+                            type=MessageType.AI_RESPONSE,
+                            content=chat_response.model_dump(),
+                            sender_id="system",
+                            receiver_id=None,
+                            room_id=room_id
+                        )
+                        await connection_manager.send_to_connection(connection_id, response_message)
+            
+            chat_response.is_finished = True
+                        
+            # 保存助手的完整回复到会话
+            full_assistant_response = ""
+            if assistant_messages:
+                full_assistant_response = "\n".join(assistant_messages)
+                await agent_session.save_message(full_assistant_response, "assistant")
+                logger.info(f"✅ 已保存助手回复到会话: {conversation_id}")
+            
+            # 更新会话状态
+            final_state = {
+                "input_items": [
+                    {"content": message, "role": "user"},
+                    {"content": full_assistant_response, "role": "assistant"}
+                ] if assistant_messages else [{"content": message, "role": "user"}],
+                "context": ctx,
+                "current_agent": chat_response.current_agent
+            }
+            
+            await session_manager.save(conversation_id, final_state)
+            logger.info(f"✅ 已保存会话状态到数据库")
+            
+            # 显示会话信息
+            conversation_info = agent_session.get_conversation_info()
+            if conversation_info:
+                logger.info(f"💬 会话信息: {conversation_info['title']} (消息数: {conversation_info['message_count']})")
+            
+            # 发送完成消息
+            completion_message = WebSocketMessage(
+                type=MessageType.AI_RESPONSE,
+                content={
+                    "type": "completion",
+                    "final_response": chat_response.model_dump(),
+                    "message": "对话完成"
+                },
+                sender_id="system",
+                receiver_id=None,
+                room_id=room_id
+            )
+            await connection_manager.send_to_connection(connection_id, completion_message)
+            
+        except Exception as stream_error:
+            logger.error(f"流式处理过程中发生错误: {stream_error}")
+            error_message = WebSocketMessage(
+                type=MessageType.AI_ERROR,
+                content={"error": "流式处理过程中发生错误", "details": str(stream_error)},
+                sender_id="system",
+                receiver_id=None,
+                room_id=f"user_{str(user_id)}_room"
+            )
+            await connection_manager.send_to_connection(connection_id, error_message)
         
     except Exception as e:
         logger.error(f"流式聊天处理错误: {e}")
@@ -525,7 +617,7 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
             },
             sender_id="system",
             receiver_id=None,
-            room_id=user_rooms.get(user_id)
+            room_id=f"user_{str(user_id)}_room"
         )
         await connection_manager.send_to_connection(connection_id, error_message)
 
@@ -672,6 +764,15 @@ app = FastAPI(
     description="提供实时通信功能的 WebSocket 服务端",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# 添加CORS中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -923,7 +1024,7 @@ async def get_status():
     }
 
 
-@app.post("/auth/login", response_model=LoginResponse)
+@app.post("/api/auth/login")
 async def login(response: Response, login_request: LoginRequest):
     """
     用户登录接口
@@ -933,17 +1034,15 @@ async def login(response: Response, login_request: LoginRequest):
         login_request: 登录请求数据
         
     Returns:
-        登录响应
+        统一API响应格式
     """
     try:
         # 验证用户凭据
         token = auth_service.login(login_request.username, login_request.password)
         
         if not token:
-            return LoginResponse(
-                success=False,
-                message="用户名或密码错误"
-            )
+            # 用户名或密码错误，返回401状态码
+            return invalid_credentials_response("用户名或密码错误")
         
         # 设置Cookie
         response.set_cookie(
@@ -957,22 +1056,22 @@ async def login(response: Response, login_request: LoginRequest):
         
         logger.info(f"用户 {login_request.username} 登录成功")
         
-        return LoginResponse(
-            success=True,
-            message="登录成功",
-            token=token,
-            user_info=token.user_info
-        )
+        # 构建成功响应数据
+        response_data = {
+            "access_token": token.access_token,
+            "token_type": token.token_type,
+            "expires_in": token.expires_in,
+            "user_info": token.user_info
+        }
+        
+        return success_response(response_data, "登录成功")
         
     except Exception as e:
         logger.error(f"登录失败: {str(e)}")
-        return LoginResponse(
-            success=False,
-            message=f"登录失败: {str(e)}"
-        )
+        return internal_error_response("服务器内部错误")
 
 
-@app.post("/auth/logout", response_model=LogoutResponse)
+@app.post("/api/auth/logout", response_model=LogoutResponse)
 async def logout(response: Response, current_user: Dict[str, Any] = CurrentUserOptional):
     """
     用户退出登录接口
@@ -1004,7 +1103,7 @@ async def logout(response: Response, current_user: Dict[str, Any] = CurrentUserO
         )
 
 
-@app.post("/auth/refresh", response_model=LoginResponse)
+@app.post("/api/auth/refresh", response_model=LoginResponse)
 async def refresh_token(response: Response, current_user: Dict[str, Any] = CurrentUser):
     """
     刷新令牌接口
@@ -1053,7 +1152,7 @@ async def refresh_token(response: Response, current_user: Dict[str, Any] = Curre
         raise HTTPException(status_code=500, detail=f"令牌刷新失败: {str(e)}")
 
 
-@app.get("/auth/me")
+@app.get("/api/auth/me")
 async def get_current_user_info(current_user: Dict[str, Any] = CurrentUser):
     """
     获取当前用户信息接口
@@ -1135,6 +1234,10 @@ async def websocket_endpoint(
         logger.error("WebSocket连接被拒绝：无法确定用户ID")
         await websocket.close(code=4001, reason="无法确定用户ID")
         return
+    
+    # 统一转换为字符串类型，确保类型一致性
+    user_id = str(user_id)
+    logger.info(f"WebSocket连接用户ID: {user_id} (类型: {type(user_id)})")
     
     connection_id = generate_connection_id()
     

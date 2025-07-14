@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, ChevronDown, ChevronUp, X, Plus, Clock, User } from 'lucide-react';
+import { conversationAPI } from '../services/apiService';
+import { useToast } from './ui/toast';
+import { PAGINATION } from '../lib/config';
 
 interface Conversation {
   id: number;
@@ -34,8 +37,9 @@ export function ConversationList({
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  const { error: showError } = useToast();
 
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = PAGINATION.DEFAULT_PAGE_SIZE;
 
   // 获取会话列表
   const fetchConversations = async (reset: boolean = false) => {
@@ -46,32 +50,21 @@ export function ConversationList({
     
     try {
       const offset = reset ? 0 : page * ITEMS_PER_PAGE;
-      const apiUrl = `/api/conversations/${userId}?limit=${ITEMS_PER_PAGE}&offset=${offset}`;
-      
-      console.log('📡 获取会话列表:', apiUrl);
-      const response = await fetch(apiUrl);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ 获取会话列表失败:', response.status, errorText);
-        throw new Error(`获取会话列表失败: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('✅ 会话列表数据:', data);
+      const response = await conversationAPI.getConversations(userId.toString(), ITEMS_PER_PAGE, offset);
       
       if (reset) {
-        setConversations(data.data || []);
+        setConversations(response.data.data || []);
         setPage(0);
       } else {
-        setConversations(prev => [...prev, ...(data.data || [])]);
+        setConversations(prev => [...prev, ...(response.data.data || [])]);
       }
       
-      setHasMore(data.data && data.data.length === ITEMS_PER_PAGE);
+      setHasMore(response.data.has_more || false);
       setPage(prev => prev + 1);
     } catch (err) {
-      console.error('❌ 获取会话列表错误:', err);
-      setError(err instanceof Error ? err.message : '获取会话列表失败');
+      const errorMessage = err instanceof Error ? err.message : '获取会话列表失败';
+      setError(errorMessage);
+      showError('获取会话列表失败', errorMessage);
     } finally {
       setLoading(false);
     }

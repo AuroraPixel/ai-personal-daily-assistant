@@ -2,6 +2,7 @@ import { mockChatResponse, mockEvents } from './mockData';
 import { createWebSocketService, getWebSocketService, type ChatResponse } from './websocket';
 import type { Message, AgentEvent, GuardrailCheck, Agent } from './types';
 import { USE_WEBSOCKET, DEFAULT_USER_ID, DEFAULT_USERNAME, DEBUG } from './config';
+import { chatAPI } from '../services/apiService';
 
 // 开发模式使用 mock 数据
 const USE_MOCK_DATA = !USE_WEBSOCKET;
@@ -223,13 +224,11 @@ export async function callChatAPI(message: string, conversationId: string) {
 
   // 原有的HTTP API调用（保留作为备用）
   try {
-    const res = await fetch("/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversation_id: conversationId, message }),
+    const response = await chatAPI.sendChatMessage({
+      conversation_id: conversationId,
+      message: message
     });
-    if (!res.ok) throw new Error(`Chat API error: ${res.status}`);
-    return res.json();
+    return response.data;
   } catch (err) {
     console.error("Error sending message:", err);
     return null;

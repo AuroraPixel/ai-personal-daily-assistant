@@ -67,7 +67,7 @@ export function Chat({
   // Watch for special seat map trigger message (anywhere in list) and only if a seat has not been picked yet
   useEffect(() => {
     const hasTrigger = messages.some(
-      (m) => m.role === "assistant" && m.content === "DISPLAY_SEAT_MAP"
+      (m) => m.type === "ai" && m.content === "DISPLAY_SEAT_MAP"
     );
     // Show map if trigger exists and seat not chosen yet
     if (hasTrigger && !selectedSeat) {
@@ -181,11 +181,22 @@ export function Chat({
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mx-4 mt-2 rounded-r border border-yellow-200">
           <div className="flex items-center">
             <AlertCircle className="h-4 w-4 text-yellow-600 mr-2" />
-            <span className="text-sm text-yellow-800">
-              {wsStatus === 'connecting'
-                ? "正在尝试连接到服务器..." 
-                : "连接已断开，部分功能可能无法使用"}
-            </span>
+            <div className="text-sm text-yellow-800">
+              {wsStatus === 'connecting' && (
+                <span>正在尝试连接到服务器...</span>
+              )}
+              {wsStatus === 'error' && (
+                <div>
+                  <div>WebSocket连接失败，聊天功能不可用</div>
+                  <div className="text-xs mt-1">
+                    可能原因：1) 后端服务未启动 2) 认证失败 3) 网络问题
+                  </div>
+                </div>
+              )}
+              {wsStatus === 'disconnected' && (
+                <span>连接已断开，部分功能可能无法使用</span>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -197,10 +208,10 @@ export function Chat({
           return (
             <div
               key={idx}
-              className={`flex mb-6 text-sm ${msg.role === "user" ? "justify-end" : "justify-start"
+              className={`flex mb-6 text-sm ${msg.type === "user" ? "justify-end" : "justify-start"
                 }`}
             >
-              {msg.role === "user" ? (
+              {msg.type === "user" ? (
                 <div className="ml-4 rounded-2xl rounded-br-md px-5 py-3 md:ml-24 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium max-w-[80%] shadow-lg border border-blue-600 transform hover:scale-[1.02] transition-all duration-200">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>

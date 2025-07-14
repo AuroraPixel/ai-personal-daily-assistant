@@ -48,6 +48,7 @@ export class WebSocketService {
   private reconnectInterval = 3000;
   private _userId: string;
   private username?: string;
+  private token?: string;
   
   // 事件处理器
   private handlers: Record<string, WebSocketEventHandler[]> = {};
@@ -55,10 +56,11 @@ export class WebSocketService {
   // 连接状态
   private _status: WebSocketConnectionStatus = 'disconnected';
   
-  constructor(userId: string, username?: string, conversationId?: string) {
+  constructor(userId: string, username?: string, conversationId?: string, token?: string) {
     this._userId = userId;
     this.username = username;
     this._conversationId = conversationId;
+    this.token = token;
   }
   
   private _conversationId?: string;
@@ -107,6 +109,9 @@ export class WebSocketService {
       if (this._conversationId) {
         wsUrl.searchParams.set('conversation_id', this._conversationId);
       }
+      if (this.token) {
+        wsUrl.searchParams.set('token', this.token);
+      }
       
       // 如果是开发环境，使用固定端口
       if (import.meta.env.DEV) {
@@ -114,6 +119,13 @@ export class WebSocketService {
       }
       
       console.log('🌐 WebSocket URL:', wsUrl.toString());
+      console.log('🔐 连接参数详情:', {
+        userId: this._userId,
+        username: this.username,
+        hasToken: !!this.token,
+        tokenLength: this.token?.length || 0,
+        conversationId: this._conversationId
+      });
       
       this.ws = new WebSocket(wsUrl.toString());
       
@@ -135,8 +147,39 @@ export class WebSocketService {
       };
       
       this.ws.onclose = (event) => {
-        console.log('🔌 WebSocket连接已关闭:', { code: event.code, reason: event.reason });
+        console.log('🔌 WebSocket连接已关闭:', { 
+          code: event.code, 
+          reason: event.reason,
+          wasClean: event.wasClean,
+          timestamp: new Date().toISOString()
+        });
+        
+        // 详细的关闭代码分析
+        switch (event.code) {
+          case 4001:
+            console.error('❌ 认证失败：JWT令牌无效或已过期');
+            this.emit('auth_error', { error: 'JWT令牌无效或已过期' });
+            break;
+          case 4003:
+            console.error('❌ 认证失败：用户ID与令牌不匹配');
+            this.emit('auth_error', { error: '用户ID与令牌不匹配' });
+            break;
+          case 1000:
+            console.log('✅ 正常关闭连接');
+            break;
+          default:
+            console.warn('⚠️ 连接异常关闭，代码:', event.code, '原因:', event.reason);
+        }
+        
         this.setStatus('disconnected');
+        
+        // 认证失败时不进行重连
+        if (event.code === 1008 || event.code === 1011 || event.code === 4001 || event.code === 4003) {
+          console.error('❌ WebSocket认证失败，停止重连');
+          this.emit('auth_error', { error: 'WebSocket认证失败' });
+          reject(new Error('WebSocket认证失败'));
+          return;
+        }
         
         // 非正常关闭时尝试重连
         if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -199,16 +242,32 @@ export class WebSocketService {
       case 'ai_response':
         this.emit('ai_response', content);
         break;
+      case 'ai_thinking':
+        this.emit('ai_thinking', content);
+        break;
+      case 'ai_finished':
+        this.emit('ai_finished', content);
+        break;
+      case 'chat_response':
+        console.log('💬 收到聊天响应:', content);
+        this.emit('chat_response', content);
+        break;
       case 'connect':
+      case 'connected':
         console.log('🎉 连接成功消息:', content);
-        this.emit('connect', content);
+        this.emit('connected', content);
         break;
       case 'error':
         console.error('❌ 服务器错误:', content);
         this.emit('error', content);
         break;
+      case 'auth_error':
+        console.error('❌ 认证错误:', content);
+        this.emit('auth_error', content);
+        break;
       default:
         console.log('📨 其他消息类型:', type, content);
+        this.emit(type, content);
         this.emit('message', message);
     }
   }
@@ -265,7 +324,7 @@ export class WebSocketService {
 // 创建全局WebSocket实例
 let wsService: WebSocketService | null = null;
 
-export function createWebSocketService(userId: string, username?: string, conversationId?: string): WebSocketService {
+export function createWebSocketService(userId: string, username?: string, conversationId?: string, token?: string): WebSocketService {
   // 如果已存在服务且用户ID相同，返回现有服务
   if (wsService && wsService.userId === userId) {
     console.log('♻️ 复用现有WebSocket服务');
@@ -282,8 +341,8 @@ export function createWebSocketService(userId: string, username?: string, conver
     wsService.disconnect();
   }
   
-  console.log('🆕 创建新的WebSocket服务:', { userId, username, conversationId });
-  wsService = new WebSocketService(userId, username, conversationId);
+  console.log('🆕 创建新的WebSocket服务:', { userId, username, conversationId, token: token ? '[TOKEN]' : undefined });
+  wsService = new WebSocketService(userId, username, conversationId, token);
   return wsService;
 }
 

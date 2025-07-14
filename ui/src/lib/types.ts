@@ -1,9 +1,12 @@
+import type { ReactNode } from 'react';
+
 export interface Message {
   id: string
   content: string
-  role: "user" | "assistant"
-  agent?: string
+  type: 'user' | 'ai' | 'system'
+  agent: string
   timestamp: Date
+  metadata?: any
 }
 
 export interface Agent {
@@ -19,20 +22,11 @@ export type EventType = "message" | "handoff" | "tool_call" | "tool_output" | "c
 
 export interface AgentEvent {
   id: string
-  type: EventType
+  type: 'tool_call' | 'handoff' | 'context_update' | 'error'
   agent: string
   content: string
   timestamp: Date
-  metadata?: {
-    source_agent?: string
-    target_agent?: string
-    tool_name?: string
-    tool_args?: Record<string, any>
-    tool_result?: any
-    context_key?: string
-    context_value?: any
-    changes?: Record<string, any>
-  }
+  metadata?: any
 }
 
 export interface GuardrailCheck {
@@ -42,4 +36,56 @@ export interface GuardrailCheck {
   reasoning: string
   passed: boolean
   timestamp: Date
+}
+
+export interface Conversation {
+  id: string
+  title: string
+  description: string
+  status: 'active' | 'inactive' | 'archived'
+  last_active: string
+  created_at: string
+  updated_at: string
+}
+
+export interface User {
+  user_id: string
+  username: string
+  email: string
+  name?: string
+  avatar?: string
+}
+
+export interface AuthToken {
+  access_token: string
+  token_type: string
+  expires_in: number
+  user_info: User
+}
+
+export interface LoginCredentials {
+  username: string
+  password: string
+}
+
+export interface AuthState {
+  user: User | null
+  token: string | null
+  isAuthenticated: boolean
+  isLoading: boolean
+  error: string | null
+}
+
+export interface ApiResponse<T = any> {
+  success: boolean
+  code: number
+  message: string
+  data?: T
+  timestamp?: string
+  request_id?: string
+}
+
+export interface ProtectedRouteProps {
+  children: ReactNode
+  requireAuth?: boolean
 } 

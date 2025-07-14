@@ -5,15 +5,31 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    port: 3000,
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+        secure: false,
+        timeout: 10000,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        }
       },
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,
         changeOrigin: true,
+        secure: false,
+        timeout: 10000
+      },
+      '/chat': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+        timeout: 10000
       }
     }
   }
