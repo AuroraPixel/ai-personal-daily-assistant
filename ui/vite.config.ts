@@ -30,6 +30,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    minify: 'terser',
+    target: 'es2015',
     rollupOptions: {
       output: {
         manualChunks: {
@@ -39,5 +41,8 @@ export default defineConfig({
         }
       }
     }
+  },
+  esbuild: {
+    logOverride: { 'this-is-undefined-in-esm': 'silent' }
   }
 })

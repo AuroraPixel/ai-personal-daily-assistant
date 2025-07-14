@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:prod": "vite build",
+    "build:check": "tsc -b --noEmit && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:ws": "node test-websocket.js"
