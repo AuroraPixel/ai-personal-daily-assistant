@@ -24,12 +24,19 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         timeout: 10000
-      },
-      '/chat': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        secure: false,
-        timeout: 10000
+      }
+    }
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          ui: ['@radix-ui/react-scroll-area', '@radix-ui/react-slot']
+        }
       }
     }
   }

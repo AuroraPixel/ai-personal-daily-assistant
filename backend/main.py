@@ -14,6 +14,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 # 导入所有API路由器
 from api import (
@@ -233,27 +235,67 @@ app = FastAPI(
 # =========================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # =========================
+# 静态文件服务配置
+# =========================
+
+# 检查静态文件目录是否存在
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    # 挂载静态文件服务
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    
+    # 为前端应用添加根路径处理
+    @app.get("/", include_in_schema=False)
+    async def serve_frontend():
+        """提供前端应用的主页面"""
+        index_file = os.path.join(static_dir, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        else:
+            return {"message": "AI 个人日常助手 API 服务", "static_files": "前端文件未找到"}
+    
+    # 为前端路由添加回退处理（支持单页应用路由）
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend_routes(full_path: str):
+        """为前端单页应用提供路由回退"""
+        # 如果是API路径，让它正常处理
+        if full_path.startswith("api/") or full_path.startswith("ws"):
+            return {"error": "路径未找到"}
+        
+        # 检查是否存在对应的静态文件
+        file_path = os.path.join(static_dir, full_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        
+        # 对于其他路径，返回index.html（单页应用路由）
+        index_file = os.path.join(static_dir, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        else:
+            return {"error": "文件未找到"}
+
+# =========================
 # 注册所有路由器
 # =========================
 
-# 系统路由器（根路径）
-app.include_router(system_router)
+# 系统路由器（API路径）
+app.include_router(system_router, prefix="/api")
 
 # 认证路由器
-app.include_router(auth_router)
+app.include_router(auth_router, prefix="/api")
 
 # 管理员路由器
-app.include_router(admin_router)
+app.include_router(admin_router, prefix="/api")
 
 # 会话路由器
-app.include_router(conversation_router)
+app.include_router(conversation_router, prefix="/api")
 
 # WebSocket路由器（包含所有WebSocket相关端点）
 app.include_router(websocket_router)

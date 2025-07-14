@@ -1,0 +1,97 @@
+{
+  "name": "ai-personal-daily-assistant",
+  "services": [
+    {
+      "name": "app",
+      "source": {
+        "type": "git"
+      },
+      "build": {
+        "dockerfile": "Dockerfile"
+      },
+      "ports": [
+        {
+          "id": "web",
+          "port": 8000,
+          "type": "HTTP"
+        }
+      ],
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+        "OPENAI_CHAT_MODEL": "${OPENAI_CHAT_MODEL}",
+        "OPENAI_EMBEDDING_MODEL": "${OPENAI_EMBEDDING_MODEL}",
+        "NEWS_API_TOKEN": "${NEWS_API_TOKEN}",
+        "DB_HOST": "${DB_HOST}",
+        "DB_PORT": "${DB_PORT}",
+        "DB_USERNAME": "${DB_USERNAME}",
+        "DB_PASSWORD": "${DB_PASSWORD}",
+        "DB_DATABASE": "${DB_DATABASE}",
+        "DB_CHARSET": "${DB_CHARSET}",
+        "CHROMA_CLIENT_MODE": "${CHROMA_CLIENT_MODE}",
+        "CHROMA_HOST": "${CHROMA_HOST}",
+        "CHROMA_PORT": "${CHROMA_PORT}"
+      },
+      "volumes": [
+        {
+          "id": "app-data",
+          "dir": "/app/data"
+        },
+        {
+          "id": "app-logs", 
+          "dir": "/app/logs"
+        }
+      ]
+    },
+    {
+      "name": "mysql",
+      "source": {
+        "type": "image",
+        "image": "mysql:8.0"
+      },
+      "ports": [
+        {
+          "id": "mysql",
+          "port": 3306,
+          "type": "TCP"
+        }
+      ],
+      "env": {
+        "MYSQL_ROOT_PASSWORD": "${DB_PASSWORD}",
+        "MYSQL_DATABASE": "${DB_DATABASE}",
+        "MYSQL_USER": "${DB_USERNAME}",
+        "MYSQL_PASSWORD": "${DB_PASSWORD}"
+      },
+      "volumes": [
+        {
+          "id": "mysql-data",
+          "dir": "/var/lib/mysql"
+        }
+      ]
+    },
+    {
+      "name": "chromadb",
+      "source": {
+        "type": "image",
+        "image": "chromadb/chroma:latest"
+      },
+      "ports": [
+        {
+          "id": "chroma",
+          "port": 8000,
+          "type": "HTTP"
+        }
+      ],
+      "env": {
+        "CHROMA_SERVER_HOST": "0.0.0.0",
+        "CHROMA_SERVER_PORT": "8000",
+        "CHROMA_SERVER_CORS_ALLOW_ORIGINS": "[\"*\"]"
+      },
+      "volumes": [
+        {
+          "id": "chroma-data",
+          "dir": "/chroma/chroma"
+        }
+      ]
+    }
+  ]
+} 
