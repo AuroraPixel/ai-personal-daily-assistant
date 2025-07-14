@@ -177,6 +177,312 @@ def get_session_manager_for_user(user_id: int) -> AgentSessionManager:
 # 流式处理函数
 # =========================
 
+async def _process_stream_with_concurrent_handling(
+    agent, input_items, context, connection_id: str, user_id: str, 
+    conversation_id: str, agent_session, session_manager
+) -> None:
+    """
+    并发流式处理函数 - 优化多用户性能
+    
+    将流式处理进一步细化，减少阻塞时间，提高并发性能
+    """
+    try:
+        # 启动流式处理
+        result = Runner.run_streamed(agent, input=input_items, context=context)
+        
+        # 初始化响应对象
+        chat_response = ChatResponse(
+            conversation_id=conversation_id,
+            current_agent=agent.name,
+            messages=[],
+            raw_response="",
+            events=[],
+            context=context.model_dump(),
+            agents=_build_agents_list(),
+            guardrails=[]
+        )
+        
+        # 用于收集助手回复的内容
+        assistant_messages = []
+        
+        # 获取用户房间ID
+        room_id = f"user_{user_id}_room"
+        
+        # 创建并发处理队列
+        response_queue = asyncio.Queue()
+        db_save_queue = asyncio.Queue()
+        
+        # 启动并发处理任务
+        response_sender_task = create_task(
+            _concurrent_response_sender(response_queue, connection_id)
+        )
+        db_saver_task = create_task(
+            _concurrent_db_saver(db_save_queue, agent_session)
+        )
+        
+        try:
+            # 处理流式事件 - 使用更高效的事件处理
+            async for event in result.stream_events():
+                # 并发处理事件，不阻塞主循环
+                await _handle_stream_event_concurrent(
+                    event, chat_response, assistant_messages, room_id, 
+                    response_queue, db_save_queue
+                )
+                
+                # 让出控制权，允许其他任务运行
+                await asyncio.sleep(0)
+            
+            # 标记完成
+            chat_response.is_finished = True
+            
+            # 保存最终回复
+            if assistant_messages:
+                full_assistant_response = "\n".join(assistant_messages)
+                await db_save_queue.put(("final_message", full_assistant_response))
+            
+            # 发送完成消息
+            completion_message = WebSocketMessage(
+                type=MessageType.AI_RESPONSE,
+                content={
+                    "type": "completion",
+                    "final_response": chat_response.model_dump(),
+                    "message": "对话完成"
+                },
+                sender_id="system",
+                receiver_id=None,
+                room_id=room_id
+            )
+            await response_queue.put(completion_message)
+            
+            # 等待所有任务完成
+            await response_queue.put(None)  # 停止信号
+            await db_save_queue.put(None)   # 停止信号
+            
+            await asyncio.gather(response_sender_task, db_saver_task, return_exceptions=True)
+            
+            # 保存会话状态
+            final_state = {
+                "input_items": [
+                    {"content": input_items[-1]["content"], "role": "user"},
+                    {"content": "\n".join(assistant_messages), "role": "assistant"}
+                ] if assistant_messages else [{"content": input_items[-1]["content"], "role": "user"}],
+                "context": context,
+                "current_agent": chat_response.current_agent
+            }
+            
+            await session_manager.save(conversation_id, final_state)
+            logger.info(f"✅ 用户 {user_id} 流式处理完成")
+            
+        except Exception as stream_error:
+            logger.error(f"❌ 用户 {user_id} 流式处理错误: {stream_error}")
+            # 发送错误消息
+            error_message = WebSocketMessage(
+                type=MessageType.AI_ERROR,
+                content={"error": "流式处理过程中发生错误", "details": str(stream_error)},
+                sender_id="system",
+                receiver_id=None,
+                room_id=room_id
+            )
+            await response_queue.put(error_message)
+            await response_queue.put(None)
+            await db_save_queue.put(None)
+            
+        finally:
+            # 确保清理任务
+            if not response_sender_task.done():
+                response_sender_task.cancel()
+            if not db_saver_task.done():
+                db_saver_task.cancel()
+                
+    except Exception as e:
+        logger.error(f"❌ 用户 {user_id} 并发流式处理失败: {e}")
+        raise
+
+
+async def _concurrent_response_sender(response_queue: asyncio.Queue, connection_id: str):
+    """并发响应发送器"""
+    try:
+        while True:
+            message = await response_queue.get()
+            if message is None:  # 停止信号
+                break
+            
+            await connection_manager.send_to_connection(connection_id, message)
+            await asyncio.sleep(0)  # 让出控制权
+            
+    except Exception as e:
+        logger.error(f"响应发送器错误: {e}")
+
+
+async def _concurrent_db_saver(db_save_queue: asyncio.Queue, agent_session):
+    """并发数据库保存器"""
+    try:
+        while True:
+            item = await db_save_queue.get()
+            if item is None:  # 停止信号
+                break
+            
+            save_type, data = item
+            if save_type == "final_message":
+                await agent_session.save_message(data, "assistant")
+            
+            await asyncio.sleep(0)  # 让出控制权
+            
+    except Exception as e:
+        logger.error(f"数据库保存器错误: {e}")
+
+
+async def _handle_stream_event_concurrent(
+    event, chat_response, assistant_messages, room_id: str, 
+    response_queue: asyncio.Queue, db_save_queue: asyncio.Queue
+):
+    """并发处理单个流式事件"""
+    try:
+        # Handle raw responses event deltas
+        if event.type == "raw_response_event":
+            if hasattr(event.data, 'type') and event.data.type == 'response.output_text.delta':
+                if hasattr(event.data, 'delta') and event.data.delta:
+                    chat_response.raw_response += event.data.delta
+                    
+                    response_message = WebSocketMessage(
+                        type=MessageType.AI_RESPONSE,
+                        content=chat_response.model_dump(),
+                        sender_id="system",
+                        receiver_id=None,
+                        room_id=room_id
+                    )
+                    await response_queue.put(response_message)
+            return
+        
+        # Check if this is a streaming event
+        if event.type == "stream_event":
+            if hasattr(event.data, 'type') and event.data.type == 'response.output_text.delta':
+                if hasattr(event.data, 'delta') and event.data.delta:
+                    chat_response.raw_response += event.data.delta
+                    
+                    response_message = WebSocketMessage(
+                        type=MessageType.AI_RESPONSE,
+                        content=chat_response.model_dump(),
+                        sender_id="system",
+                        receiver_id=None,
+                        room_id=room_id
+                    )
+                    await response_queue.put(response_message)
+            return
+        
+        # Handle items
+        if event.type == "run_item_stream_event" and hasattr(event, 'item'):
+            item = event.item
+            
+            if isinstance(item, MessageOutputItem):
+                # 处理消息输出项
+                text = ItemHelpers.text_message_output(item)
+                message_response = MessageResponse(content=text, agent=item.agent.name)
+                chat_response.messages.append(message_response)
+                
+                # 保存助手消息
+                assistant_messages.append(text)
+                
+                agent_event = AgentEvent(
+                    id=uuid4().hex,
+                    type="message",
+                    agent=item.agent.name,
+                    content=text
+                )
+                chat_response.events.append(agent_event)
+                
+                response_message = WebSocketMessage(
+                    type=MessageType.AI_RESPONSE,
+                    content=chat_response.model_dump(),
+                    sender_id="system",
+                    receiver_id=None,
+                    room_id=room_id
+                )
+                await response_queue.put(response_message)
+                
+            elif isinstance(item, HandoffOutputItem):
+                # 处理切换代理项
+                chat_response.current_agent = item.agent.name
+                
+                agent_event = AgentEvent(
+                    id=uuid4().hex,
+                    type="handoff",
+                    agent=item.agent.name,
+                    content=f"切换到 {item.agent.name}"
+                )
+                chat_response.events.append(agent_event)
+                
+                response_message = WebSocketMessage(
+                    type=MessageType.AI_RESPONSE,
+                    content=chat_response.model_dump(),
+                    sender_id="system",
+                    receiver_id=None,
+                    room_id=room_id
+                )
+                await response_queue.put(response_message)
+                
+            elif isinstance(item, ToolCallItem):
+                # 处理工具调用项
+                tool_name = getattr(item.raw_item, "name", None)
+                raw_args = getattr(item.raw_item, "arguments", None)
+                tool_args: Any = raw_args
+                if isinstance(raw_args, str):
+                    try:
+                        import json
+                        tool_args = json.loads(raw_args)
+                    except Exception:
+                        pass
+                
+                tool_call_event = AgentEvent(
+                    id=uuid4().hex,
+                    type="tool_call",
+                    agent=item.agent.name,
+                    content=tool_name or "",
+                    metadata={"tool_args": tool_args}
+                )
+                chat_response.events.append(tool_call_event)
+                
+                # 特殊处理display_seat_map
+                if tool_name == "display_seat_map":
+                    seat_map_message = MessageResponse(
+                        content="DISPLAY_SEAT_MAP",
+                        agent=item.agent.name,
+                    )
+                    chat_response.messages.append(seat_map_message)
+                
+                response_message = WebSocketMessage(
+                    type=MessageType.AI_RESPONSE,
+                    content=chat_response.model_dump(),
+                    sender_id="system",
+                    receiver_id=None,
+                    room_id=room_id
+                )
+                await response_queue.put(response_message)
+                
+            elif isinstance(item, ToolCallOutputItem):
+                # 处理工具调用输出项
+                tool_output_event = AgentEvent(
+                    id=uuid4().hex,
+                    type="tool_output",
+                    agent=item.agent.name,
+                    content=str(item.output),
+                    metadata={"tool_result": item.output}
+                )
+                chat_response.events.append(tool_output_event)
+                
+                response_message = WebSocketMessage(
+                    type=MessageType.AI_RESPONSE,
+                    content=chat_response.model_dump(),
+                    sender_id="system",
+                    receiver_id=None,
+                    room_id=room_id
+                )
+                await response_queue.put(response_message)
+                
+    except Exception as e:
+        logger.error(f"处理流式事件错误: {e}")
+
+
 async def handle_stream_chat(user_id: str, message: str, connection_id: str, authenticated_user: Optional[Dict[str, Any]] = None, conversation_id: Optional[str] = None) -> None:
     """处理流式聊天消息"""
     try:
@@ -278,11 +584,21 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
         for i, item in enumerate(input_items):
             logger.debug(f"  {i+1}. [{item.get('role', 'unknown')}]: {item.get('content', '')[:50]}{'...' if len(item.get('content', '')) > 50 else ''}")
         
-        # 处理流式响应，传入完整的会话历史
-        logger.info(f"🔄 用户 {user_id} 会话历史消息: {input_items}")
+        # 启动非阻塞流式处理
+        logger.info(f"🔄 用户 {user_id} 开始非阻塞流式处理")
         try:
-            result = Runner.run_streamed(triage_agent, input=input_items, context=ctx)
-            logger.info(f"成功启动流式处理: 用户 {user_id}")
+            # 创建流式处理任务
+            stream_task = create_task(
+                _process_stream_with_concurrent_handling(
+                    triage_agent, input_items, ctx, connection_id, user_id, 
+                    conversation_id, agent_session, session_manager
+                )
+            )
+            logger.info(f"✅ 用户 {user_id} 流式处理任务已启动")
+            
+            # 等待流式处理完成
+            await stream_task
+            
         except Exception as e:
             logger.error(f"启动流式处理失败: {e}")
             error_message = WebSocketMessage(
@@ -295,234 +611,8 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
             await connection_manager.send_to_connection(connection_id, error_message)
             return
         
-        # 初始化一个ChatResponse对象
-        chat_response = ChatResponse(
-            conversation_id=conversation_id,
-            current_agent=triage_agent.name,
-            messages=[],
-            raw_response="",
-            events=[],
-            context=ctx.model_dump(),
-            agents=_build_agents_list(),
-            guardrails=[]
-        )
-        
-        # 用于收集助手回复的内容
-        assistant_messages = []
-        
-        # 获取用户房间ID - 动态构建，不依赖全局变量
-        user_id_str = str(user_id)
-        room_id = f"user_{user_id_str}_room"
-        logger.info(f"使用用户 {user_id_str} 的房间ID: {room_id}")
-            
-        try:
-            async for event in result.stream_events():
-                # Handle raw responses event deltas
-                if event.type == "raw_response_event":
-                    # 检查是否是 response.output_text.delta 类型
-                    if hasattr(event.data, 'type') and event.data.type == 'response.output_text.delta':
-                        # 将 delta 内容追加到 raw_response 中
-                        if hasattr(event.data, 'delta') and event.data.delta:
-                            chat_response.raw_response += event.data.delta
-                            
-                            # 发送更新的ChatResponse
-                            response_message = WebSocketMessage(
-                                type=MessageType.AI_RESPONSE,
-                                content=chat_response.model_dump(),
-                                sender_id="system",
-                                receiver_id=None,
-                                room_id=room_id
-                            )
-                            await connection_manager.send_to_connection(connection_id, response_message)
-                    continue
-                
-                # Check if this is a streaming event
-                if event.type == "stream_event":
-                    # Process streaming event
-                    
-                    # 检查是否是 response.output_text.delta 类型
-                    if hasattr(event.data, 'type') and event.data.type == 'response.output_text.delta':
-                        # 将 delta 内容追加到 raw_response 中
-                        if hasattr(event.data, 'delta') and event.data.delta:
-                            chat_response.raw_response += event.data.delta
-                            
-                            # 发送更新的ChatResponse
-                            response_message = WebSocketMessage(
-                                type=MessageType.AI_RESPONSE,
-                                content=chat_response.model_dump(),
-                                sender_id="system",
-                                receiver_id=None,
-                                room_id=room_id
-                            )
-                            await connection_manager.send_to_connection(connection_id, response_message)
-                    continue
-                
-                # Handle items
-                if event.type == "run_item_stream_event" and hasattr(event, 'item'):
-                    item = event.item
-                    
-                    if isinstance(item, MessageOutputItem):
-                        # 处理消息输出项
-                        text = ItemHelpers.text_message_output(item)
-                        message_response = MessageResponse(content=text, agent=item.agent.name)
-                        chat_response.messages.append(message_response)
-                        
-                        # 保存助手消息到会话
-                        assistant_messages.append(text)
-                        
-                        agent_event = AgentEvent(
-                            id=uuid4().hex,
-                            type="message",
-                            agent=item.agent.name,
-                            content=text
-                        )
-                        chat_response.events.append(agent_event)
-                        
-                        # 发送更新的ChatResponse
-                        response_message = WebSocketMessage(
-                            type=MessageType.AI_RESPONSE,
-                            content=chat_response.model_dump(),
-                            sender_id="system",
-                            receiver_id=None,
-                            room_id=room_id
-                        )
-                        await connection_manager.send_to_connection(connection_id, response_message)
-                        
-                    elif isinstance(item, HandoffOutputItem):
-                        # 处理切换代理项
-                        # 更新当前代理
-                        chat_response.current_agent = item.agent.name
-                        
-                        # 添加代理切换事件
-                        agent_event = AgentEvent(
-                            id=uuid4().hex,
-                            type="handoff",
-                            agent=item.agent.name,
-                            content=f"切换到 {item.agent.name}"
-                        )
-                        chat_response.events.append(agent_event)
-                        
-                        # 发送更新的ChatResponse
-                        response_message = WebSocketMessage(
-                            type=MessageType.AI_RESPONSE,
-                            content=chat_response.model_dump(),
-                            sender_id="system",
-                            receiver_id=None,
-                            room_id=room_id
-                        )
-                        await connection_manager.send_to_connection(connection_id, response_message)
-                        
-                    elif isinstance(item, ToolCallItem):
-                        # 处理工具调用项
-                        tool_name = getattr(item.raw_item, "name", None)
-                        raw_args = getattr(item.raw_item, "arguments", None)
-                        tool_args: Any = raw_args
-                        if isinstance(raw_args, str):
-                            try:
-                                import json
-                                tool_args = json.loads(raw_args)
-                            except Exception:
-                                pass
-                        
-                        tool_call_event = AgentEvent(
-                            id=uuid4().hex,
-                            type="tool_call",
-                            agent=item.agent.name,
-                            content=tool_name or "",
-                            metadata={"tool_args": tool_args}
-                        )
-                        chat_response.events.append(tool_call_event)
-                        
-                        # 特殊处理display_seat_map
-                        if tool_name == "display_seat_map":
-                            seat_map_message = MessageResponse(
-                                content="DISPLAY_SEAT_MAP",
-                                agent=item.agent.name,
-                            )
-                            chat_response.messages.append(seat_map_message)
-                        
-                        # 发送更新的ChatResponse
-                        response_message = WebSocketMessage(
-                            type=MessageType.AI_RESPONSE,
-                            content=chat_response.model_dump(),
-                            sender_id="system",
-                            receiver_id=None,
-                            room_id=room_id
-                        )
-                        await connection_manager.send_to_connection(connection_id, response_message)
-                        
-                    elif isinstance(item, ToolCallOutputItem):
-                        # 处理工具调用输出项
-                        tool_output_event = AgentEvent(
-                            id=uuid4().hex,
-                            type="tool_output",
-                            agent=item.agent.name,
-                            content=str(item.output),
-                            metadata={"tool_result": item.output}
-                        )
-                        chat_response.events.append(tool_output_event)
-                        
-                        # 发送更新的ChatResponse
-                        response_message = WebSocketMessage(
-                            type=MessageType.AI_RESPONSE,
-                            content=chat_response.model_dump(),
-                            sender_id="system",
-                            receiver_id=None,
-                            room_id=room_id
-                        )
-                        await connection_manager.send_to_connection(connection_id, response_message)
-            
-            chat_response.is_finished = True
-                        
-            # 保存助手的完整回复到会话
-            full_assistant_response = ""
-            if assistant_messages:
-                full_assistant_response = "\n".join(assistant_messages)
-                await agent_session.save_message(full_assistant_response, "assistant")
-                logger.info(f"✅ 已保存助手回复到会话: {conversation_id}")
-            
-            # 更新会话状态
-            final_state = {
-                "input_items": [
-                    {"content": message, "role": "user"},
-                    {"content": full_assistant_response, "role": "assistant"}
-                ] if assistant_messages else [{"content": message, "role": "user"}],
-                "context": ctx,
-                "current_agent": chat_response.current_agent
-            }
-            
-            await session_manager.save(conversation_id, final_state)
-            logger.info(f"✅ 已保存会话状态到数据库")
-            
-            # 显示会话信息
-            conversation_info = agent_session.get_conversation_info()
-            if conversation_info:
-                logger.info(f"💬 会话信息: {conversation_info['title']} (消息数: {conversation_info['message_count']})")
-            
-            # 发送完成消息
-            completion_message = WebSocketMessage(
-                type=MessageType.AI_RESPONSE,
-                content={
-                    "type": "completion",
-                    "final_response": chat_response.model_dump(),
-                    "message": "对话完成"
-                },
-                sender_id="system",
-                receiver_id=None,
-                room_id=room_id
-            )
-            await connection_manager.send_to_connection(connection_id, completion_message)
-            
-        except Exception as stream_error:
-            logger.error(f"流式处理过程中发生错误: {stream_error}")
-            error_message = WebSocketMessage(
-                type=MessageType.AI_ERROR,
-                content={"error": "流式处理过程中发生错误", "details": str(stream_error)},
-                sender_id="system",
-                receiver_id=None,
-                room_id=f"user_{str(user_id)}_room"
-            )
-            await connection_manager.send_to_connection(connection_id, error_message)
+        # 流式处理已移至 _process_stream_with_concurrent_handling 函数
+        logger.info(f"✅ 用户 {user_id} 流式处理任务完成")
         
     except Exception as e:
         logger.error(f"流式聊天处理错误: {e}")
