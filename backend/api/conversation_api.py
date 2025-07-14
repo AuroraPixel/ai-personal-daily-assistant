@@ -23,7 +23,7 @@ from service.services.chat_message_service import ChatMessageService
 logger = logging.getLogger(__name__)
 
 # 创建会话API路由器
-conversation_router = APIRouter(prefix="/api/conversations", tags=["会话"])
+conversation_router = APIRouter(prefix="/conversations", tags=["会话"])
 
 # =========================
 # 数据模型

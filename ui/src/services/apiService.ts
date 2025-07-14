@@ -42,7 +42,7 @@ export function setAuthFailureHandler(handler: () => void) {
 
 // 创建axios实例
 const apiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.DEV ? '' : API_BASE_URL, // 开发环境使用相对路径
+  baseURL: '', // 始终使用相对路径，因为前端现在通过后端服务器提供
   timeout: REQUEST_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
