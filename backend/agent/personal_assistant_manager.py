@@ -123,9 +123,9 @@ class PersonalAssistantManager:
     def _create_model(self) -> LitellmModel:
         """创建语言模型"""
         return LitellmModel(
-            model="gpt-4o",
-            base_url=os.getenv("CUSTOMIZE_OPENAI_API_BASE_URL"),
-            api_key=os.getenv("CUSTOMIZE_OPENAI_API_KEY"),
+            model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o"),
+            base_url=os.getenv("OPENAI_API_BASE_URL", "https://api.openai.com/v1"),
+            api_key=os.getenv("OPENAI_API_KEY"),
         )
     
     def _create_model_settings(self) -> ModelSettings:
