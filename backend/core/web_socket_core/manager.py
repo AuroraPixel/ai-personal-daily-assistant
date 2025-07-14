@@ -117,15 +117,8 @@ class WebSocketConnectionManager:
         if self.heartbeat_task is None:
             self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         
-        # 发送连接成功消息 (Send connection success message)
-        await self.send_to_connection(
-            conn_info.connection_id,
-            WebSocketMessage(
-                type=MessageType.CONNECT,
-                content={"status": "connected", "connection_id": conn_info.connection_id},
-                timestamp=datetime.utcnow()
-            )
-        )
+        # 注意：不再自动发送连接消息，让调用者自己决定发送什么欢迎消息
+        # (Note: No longer automatically send connection message, let caller decide what welcome message to send)
         
         logger.info(f"新连接已建立 (New connection established): {conn_info.connection_id}")
         return conn_info.connection_id
@@ -438,6 +431,9 @@ class WebSocketConnectionManager:
             ping_message = WebSocketMessage(
                 type=MessageType.PING,
                 content={"timestamp": current_time.isoformat()},
+                sender_id=None,
+                receiver_id=None,
+                room_id=None,
                 timestamp=current_time
             )
             
@@ -459,7 +455,7 @@ class WebSocketConnectionManager:
         if connection_id in self.connection_info:
             self.connection_info[connection_id].last_ping = datetime.utcnow()
 
-    def register_message_handler(self, message_type: MessageType, handler: callable):
+    def register_message_handler(self, message_type: MessageType, handler):
         """
         注册消息处理器 (Register message handler)
         
@@ -487,6 +483,9 @@ class WebSocketConnectionManager:
                 error_message = WebSocketMessage(
                     type=MessageType.ERROR,
                     content={"error": "Message handler error", "details": str(e)},
+                    sender_id=None,
+                    receiver_id=None,
+                    room_id=None,
                     timestamp=datetime.utcnow()
                 )
                 await self.send_to_connection(connection_id, error_message)

@@ -30,3 +30,12 @@ opentelemetry-api
 opentelemetry-exporter-otlp-proto-http
 opentelemetry-sdk
 posthog
+
+# JWT Authentication Dependencies
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Testing Dependencies
+requests>=2.31.0
+websockets>=11.0.0
+python-socks[asyncio]>=2.3.0
