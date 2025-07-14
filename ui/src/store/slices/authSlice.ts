@@ -69,10 +69,22 @@ export const getCurrentUser = createAsyncThunk<User, void, { rejectValue: string
   async (_, { rejectWithValue }) => {
     try {
       const response = await authAPI.getCurrentUser();
-      if (response.success && response.data) {
-        return response.data;
+      
+      // 后端实际返回的格式是 { success: true, message: "...", user_info: {...} }
+      if (response.success) {
+        // 检查是否有用户信息（兼容不同的返回格式）
+        const userInfo = (response as any).user_info || response.data;
+        
+        if (userInfo) {
+          console.log('✅ getCurrentUser: 获取用户信息成功:', userInfo);
+          return userInfo;
+        } else {
+          console.warn('⚠️ getCurrentUser: API成功但无用户数据:', response);
+          return rejectWithValue(response.message || '获取用户信息失败');
+        }
+      } else {
+        return rejectWithValue(response.message || '获取用户信息失败');
       }
-      return rejectWithValue(response.message || '获取用户信息失败');
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -80,25 +92,60 @@ export const getCurrentUser = createAsyncThunk<User, void, { rejectValue: string
 );
 
 // 验证当前token有效性
-export const validateToken = createAsyncThunk<User, void, { rejectValue: string }>(
+export const validateToken = createAsyncThunk<User, void, { rejectValue: { message: string; isAuthError: boolean } }>(
   'auth/validateToken',
   async (_, { rejectWithValue }) => {
     try {
       // 检查本地token是否过期
       if (AuthManager.isTokenExpired()) {
-        throw new Error('Token已过期');
+        // 本地token过期，清除本地存储
+        AuthManager.clearAuth();
+        return rejectWithValue({ message: 'Token已过期', isAuthError: true });
       }
       
       // 验证token是否有效
       const response = await authAPI.getCurrentUser();
-      if (response.success && response.data) {
-        return response.data;
+      
+      // 后端实际返回的格式是 { success: true, message: "...", user_info: {...} }
+      // 而不是标准的 { success: true, data: {...} }
+      if (response.success) {
+        // 检查是否有用户信息（兼容不同的返回格式）
+        const userInfo = (response as any).user_info || response.data;
+        
+        if (userInfo) {
+          console.log('✅ validateToken: token验证成功，用户信息:', userInfo);
+          return userInfo;
+        } else {
+          console.warn('⚠️ validateToken: API成功但无用户数据:', response);
+          return rejectWithValue({ message: response.message || 'Token无效', isAuthError: true });
+        }
+      } else {
+        return rejectWithValue({ message: response.message || 'Token无效', isAuthError: true });
       }
-      throw new Error(response.message || 'Token无效');
+      
     } catch (error: any) {
-      // Token无效，清除本地存储
-      AuthManager.clearAuth();
-      return rejectWithValue(error.message);
+      console.error('❌ validateToken: 验证失败:', error);
+      
+      // 检查是否是认证相关错误（401或特定业务错误码）
+      const isAuthError = error.response?.status === 401 || 
+                         (error.response?.data?.code >= 1001 && error.response?.data?.code <= 1004);
+      
+      if (isAuthError) {
+        // 只有认证错误才清除本地存储
+        console.log('🧹 validateToken: 认证错误，清除本地认证信息');
+        AuthManager.clearAuth();
+        return rejectWithValue({ 
+          message: error.response?.data?.message || error.message || 'Token无效', 
+          isAuthError: true 
+        });
+      } else {
+        // 其他错误（网络错误等）不清除认证状态
+        console.log('⚠️ validateToken: 非认证错误，保持认证状态');
+        return rejectWithValue({ 
+          message: error.message || '验证失败', 
+          isAuthError: false 
+        });
+      }
     }
   }
 );
@@ -226,11 +273,22 @@ const authSlice = createSlice({
       })
       .addCase(validateToken.rejected, (state, action) => {
         state.isLoading = false;
-        state.error = action.payload as string;
-        // Token验证失败，清除认证状态
-        state.user = null;
-        state.token = null;
-        state.isAuthenticated = false;
+        
+        // 检查是否是认证错误
+        const payload = action.payload as { message: string; isAuthError: boolean };
+        
+        if (payload?.isAuthError) {
+          // 只有认证错误才清除认证状态
+          console.log('🧹 validateToken.rejected: 认证错误，清除认证状态');
+          state.user = null;
+          state.token = null;
+          state.isAuthenticated = false;
+          state.error = payload.message;
+        } else {
+          // 非认证错误，保持认证状态，只记录错误
+          console.log('⚠️ validateToken.rejected: 非认证错误，保持认证状态');
+          state.error = payload?.message || '验证失败';
+        }
       });
   },
 });

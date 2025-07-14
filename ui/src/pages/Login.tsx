@@ -27,26 +27,27 @@ const Login: React.FC = () => {
     };
   }, [dispatch]);
 
-  // 如果已经认证，重定向到主页
+  // 如果已经认证，直接跳转到主页
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/');
+      console.log('🏠 Login: 用户已认证，跳转到主页');
+      navigate('/', { replace: true });
     }
   }, [isAuthenticated, navigate]);
 
   const onSubmit = async (data: LoginCredentials) => {
-    console.log('提交登录表单:', data);
+    console.log('📝 提交登录表单:', data);
     
     // 清除之前的错误
     dispatch(clearError());
     
     try {
       const result = await dispatch(login(data)).unwrap();
-      console.log('登录成功:', result);
-      navigate('/');
+      console.log('✅ 登录成功:', result);
+      // 不需要手动导航，上面的useEffect会自动处理
     } catch (error) {
       // 错误已经在store中处理，不需要额外操作
-      console.error('登录失败:', error);
+      console.error('❌ 登录失败:', error);
       // 不要导航，让用户留在登录页面看到错误信息
     }
   };

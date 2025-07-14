@@ -8,7 +8,7 @@ import { setGlobalErrorHandler, setAuthFailureHandler } from './services/apiServ
 import { useToast } from './components/ui/toast';
 import { useAppDispatch } from './store/hooks';
 import { logout } from './store/slices/authSlice';
-import { useAuthInit, useAutoTokenRefresh } from './hooks/useAuthInit';
+import { useAuthInit, useAutoTokenRefresh, useRouteTokenValidation } from './hooks/useAuthInit';
 import { Loader2 } from 'lucide-react';
 
 function App() {
@@ -20,6 +20,9 @@ function App() {
   
   // 自动token刷新
   useAutoTokenRefresh();
+  
+  // 路由变化时验证token（防止后端重启导致内存失效）
+  useRouteTokenValidation();
 
   useEffect(() => {
     // 设置全局API错误处理

@@ -14,9 +14,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const { isAuthenticated, isLoading, token, user } = useAppSelector((state) => state.auth);
 
   // 如果有token但没有用户信息，尝试获取用户信息
-  // 注意：只有在需要认证的页面才进行此检查，避免在登录页面时触发
   useEffect(() => {
     if (requireAuth && token && !user && !isLoading && !isAuthenticated) {
+      console.log('📱 ProtectedRoute: 有token但无用户信息，尝试获取用户信息...');
       dispatch(getCurrentUser());
     }
   }, [requireAuth, token, user, isLoading, isAuthenticated, dispatch]);
@@ -35,11 +35,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // 需要认证但未认证，重定向到登录页面
   if (requireAuth && !isAuthenticated) {
+    console.log('🚫 ProtectedRoute: 需要认证但未认证，重定向到登录页面');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   // 已认证但访问登录页面，重定向到主页
   if (!requireAuth && isAuthenticated && location.pathname === '/login') {
+    console.log('🏠 ProtectedRoute: 已认证用户访问登录页面，重定向到主页');
     return <Navigate to="/" replace />;
   }
 
