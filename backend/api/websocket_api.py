@@ -10,6 +10,7 @@ import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from uuid import uuid4
+from asyncio import Queue, create_task
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Query
 from pydantic import BaseModel
@@ -40,6 +41,9 @@ from core.web_socket_core import (
     create_error_message,
     generate_connection_id
 )
+
+# 导入性能管理器
+from core.performance_manager import performance_manager
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -88,18 +92,17 @@ class ChatResponse(BaseModel):
 # 用户会话映射（保留全局状态跟踪）
 user_conversations: Dict[str, str] = {}
 
-# 全局服务实例（从service_manager获取）
-db_client: Optional[DatabaseClient] = None
-assistant_manager: Optional[PersonalAssistantManager] = None
-
 # =========================
 # 辅助函数
 # =========================
 
 def initialize_context(user_id: int) -> PersonalAssistantContext:
-    """初始化用户上下文"""
-    if assistant_manager is None:
-        # 如果管理器未初始化，返回默认上下文
+    """初始化用户上下文（已优化使用缓存）"""
+    try:
+        return performance_manager.get_user_context(user_id)
+    except Exception as e:
+        logger.error(f"获取用户上下文失败: {e}")
+        # 返回默认上下文
         return PersonalAssistantContext(
             user_id=user_id,
             user_name=f"User {user_id}",
@@ -108,24 +111,21 @@ def initialize_context(user_id: int) -> PersonalAssistantContext:
             user_preferences={},
             todos=[]
         )
-    
-    return assistant_manager.create_user_context(user_id)
 
 def _build_agents_list() -> List[Dict[str, Any]]:
     """Build a list of all available agents and their metadata."""
-    if assistant_manager is None:
-        return []
-    
-    def make_agent_dict(agent):
-        return {
-            "name": agent.name,
-            "description": getattr(agent, "handoff_description", ""),
-            "handoffs": [getattr(h, "agent_name", getattr(h, "name", "")) for h in getattr(agent, "handoffs", [])],
-            "tools": [getattr(t, "name", getattr(t, "__name__", "")) for t in getattr(agent, "tools", [])],
-            "input_guardrails": [_get_guardrail_name(g) for g in getattr(agent, "input_guardrails", [])],
-        }
-    
     try:
+        assistant_manager = performance_manager.get_assistant_manager()
+        
+        def make_agent_dict(agent):
+            return {
+                "name": agent.name,
+                "description": getattr(agent, "handoff_description", ""),
+                "handoffs": [getattr(h, "agent_name", getattr(h, "name", "")) for h in getattr(agent, "handoffs", [])],
+                "tools": [getattr(t, "name", getattr(t, "__name__", "")) for t in getattr(agent, "tools", [])],
+                "input_guardrails": [_get_guardrail_name(g) for g in getattr(agent, "input_guardrails", [])],
+            }
+        
         return [
             make_agent_dict(assistant_manager.get_triage_agent()),
             make_agent_dict(assistant_manager.get_news_agent()),
@@ -133,7 +133,8 @@ def _build_agents_list() -> List[Dict[str, Any]]:
             make_agent_dict(assistant_manager.get_personal_agent()),
             make_agent_dict(assistant_manager.get_weather_agent()),
         ]
-    except Exception:
+    except Exception as e:
+        logger.error(f"构建agent列表失败: {e}")
         return []
 
 def _get_guardrail_name(g) -> str:
@@ -151,68 +152,26 @@ def _get_guardrail_name(g) -> str:
 
 def _get_agent_by_name(name: str):
     """Return the agent object by name."""
-    if assistant_manager is None:
-        logger.error("Assistant manager not initialized when trying to get agent")
-        raise RuntimeError("Assistant manager not initialized")
-    
     try:
-        # 映射智能体名称到管理器方法
-        agent_mapping = {
-            "Triage Agent": assistant_manager.get_triage_agent,
-            "Weather Agent": assistant_manager.get_weather_agent,
-            "News Agent": assistant_manager.get_news_agent,
-            "Recipe Agent": assistant_manager.get_recipe_agent,
-            "Personal Assistant Agent": assistant_manager.get_personal_agent,
-        }
-        
-        if name in agent_mapping:
-            agent = agent_mapping[name]()
-            logger.info(f"Successfully retrieved agent: {name}")
-            return agent
-        else:
-            # 默认返回任务调度中心
-            logger.warning(f"Agent '{name}' not found, returning Triage Agent")
-            return assistant_manager.get_triage_agent()
+        return performance_manager.get_agent_by_name(name)
     except Exception as e:
         logger.error(f"Error getting agent '{name}': {e}")
-        # 如果获取失败，返回任务调度中心
-        try:
-            return assistant_manager.get_triage_agent()
-        except Exception as fallback_error:
-            logger.error(f"Failed to get fallback Triage Agent: {fallback_error}")
-            raise RuntimeError(f"Failed to get any agent: {fallback_error}")
+        raise RuntimeError(f"Failed to get agent '{name}': {e}")
 
 # =========================
 # 服务初始化函数
 # =========================
 
 async def ensure_services_initialized():
-    """确保服务已初始化"""
-    global db_client, assistant_manager
-    
-    if db_client is None:
-        db_client = service_manager.get_db_client()
-        if db_client is None:
-            raise RuntimeError("无法获取数据库客户端")
-    
-    if assistant_manager is None:
-        assistant_manager = PersonalAssistantManager(
-            db_client=db_client,
-            mcp_server_url="http://localhost:8002/mcp"
-        )
-        await assistant_manager.initialize()
+    """确保服务已初始化（已优化使用性能管理器）"""
+    if not performance_manager._initialized:
+        success = await performance_manager.initialize()
+        if not success:
+            raise RuntimeError("性能管理器初始化失败")
 
 def get_session_manager_for_user(user_id: int) -> AgentSessionManager:
-    """为特定用户创建会话管理器"""
-    # 使用service_manager提供的统一数据库客户端
-    shared_db_client = service_manager.get_db_client()
-    if shared_db_client is None:
-        raise RuntimeError("数据库客户端未初始化")
-    return AgentSessionManager(
-        db_client=shared_db_client,
-        default_user_id=user_id,  # 使用真实的用户ID
-        max_messages=100
-    )
+    """为特定用户获取会话管理器（已优化使用缓存）"""
+    return performance_manager.get_session_manager(user_id)
 
 # =========================
 # 流式处理函数
@@ -224,14 +183,15 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
         # 确保服务已初始化
         await ensure_services_initialized()
         
-        # 获取用户特定的会话管理器
+        # 获取用户特定的会话管理器（使用缓存）
         try:
             session_manager = get_session_manager_for_user(int(user_id))
+            logger.debug(f"✅ 用户 {user_id} 会话管理器已获取（缓存优化）")
         except Exception as e:
-            logger.error(f"创建会话管理器失败: {e}")
+            logger.error(f"获取会话管理器失败: {e}")
             error_message = WebSocketMessage(
                 type=MessageType.AI_ERROR,
-                content={"error": "创建会话管理器失败", "details": str(e)},
+                content={"error": "获取会话管理器失败", "details": str(e)},
                 sender_id="system",
                 receiver_id=None,
                 room_id=f"user_{str(user_id)}_room"
@@ -239,27 +199,17 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
             await connection_manager.send_to_connection(connection_id, error_message)
             return
         
-        if assistant_manager is None:
-            logger.error("助手管理器未初始化")
-            error_message = WebSocketMessage(
-                type=MessageType.AI_ERROR,
-                content={"error": "助手管理器未初始化", "details": "服务启动失败"},
-                sender_id="system",
-                receiver_id=None,
-                room_id=f"user_{str(user_id)}_room"
-            )
-            await connection_manager.send_to_connection(connection_id, error_message)
-            return
+        # 检查性能管理器是否已初始化（这个检查现在由ensure_services_initialized处理）
         
-        # 初始化用户上下文
+        # 获取用户上下文（使用缓存）
         try:
             ctx = initialize_context(int(user_id))
-            logger.info(f"用户 {user_id} 上下文初始化成功")
+            logger.debug(f"✅ 用户 {user_id} 上下文已获取（缓存优化）")
         except Exception as e:
-            logger.error(f"初始化用户上下文失败: {e}")
+            logger.error(f"获取用户上下文失败: {e}")
             error_message = WebSocketMessage(
                 type=MessageType.AI_ERROR,
-                content={"error": "初始化用户上下文失败", "details": str(e)},
+                content={"error": "获取用户上下文失败", "details": str(e)},
                 sender_id="system",
                 receiver_id=None,
                 room_id=f"user_{str(user_id)}_room"
@@ -269,7 +219,7 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
 
         try:
             triage_agent = _get_agent_by_name("Triage Agent")
-            logger.info(f"成功获取Triage Agent")
+            logger.debug(f"✅ 用户 {user_id} Triage Agent已获取（单例复用）")
         except Exception as e:
             logger.error(f"获取Triage Agent失败: {e}")
             error_message = WebSocketMessage(
@@ -608,11 +558,23 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
 from core.web_socket_core import WebSocketMessageHandler
 
 class CustomMessageHandler(WebSocketMessageHandler):
-    """自定义消息处理器，支持流式输出"""
+    """自定义消息处理器，支持流式输出和并行处理"""
+    
+    def __init__(self, connection_manager):
+        super().__init__(connection_manager)
+        # 用于异步消息处理的队列和任务池
+        self._message_queue: Queue = Queue()
+        self._processing_tasks: Dict[str, asyncio.Task] = {}
+        self._stats = {
+            "messages_processed": 0,
+            "messages_queued": 0,
+            "active_tasks": 0,
+            "errors": 0
+        }
     
     async def handle_chat(self, connection_id: str, message: WebSocketMessage, authenticated_user: Optional[Dict[str, Any]] = None):
-        """处理聊天消息 - 支持流式输出"""
-        logger.info(f"处理流式聊天消息: {connection_id}")
+        """处理聊天消息 - 支持流式输出和并行处理"""
+        logger.debug(f"🔄 接收流式聊天消息: {connection_id}")
         
         # 获取发送者信息
         conn_info = await self.connection_manager.get_connection_info(connection_id)
@@ -639,8 +601,61 @@ class CustomMessageHandler(WebSocketMessageHandler):
         # 获取会话ID（从消息metadata中获取）
         conversation_id = message.metadata.get("conversation_id") if message.metadata else None
         
-        # 启动流式处理
-        await handle_stream_chat(user_id, str(message_content), connection_id, authenticated_user, conversation_id)
+        # 异步处理消息（不阻塞其他用户）
+        task_id = f"{connection_id}_{datetime.utcnow().timestamp()}"
+        task = create_task(self._process_chat_async(
+            user_id, str(message_content), connection_id, authenticated_user, conversation_id, task_id
+        ))
+        
+        # 跟踪任务
+        self._processing_tasks[task_id] = task
+        self._stats["messages_queued"] += 1
+        self._stats["active_tasks"] = len(self._processing_tasks)
+        
+        logger.info(f"🚀 用户 {user_id} 消息已加入异步处理队列 (任务ID: {task_id[:8]}...)")
+        
+        # 清理完成的任务
+        task.add_done_callback(lambda t: self._cleanup_task(task_id))
+    
+    async def _process_chat_async(self, user_id: str, message_content: str, connection_id: str, 
+                                  authenticated_user: Optional[Dict[str, Any]], conversation_id: Optional[str], task_id: str):
+        """异步处理聊天消息"""
+        try:
+            start_time = asyncio.get_event_loop().time()
+            logger.info(f"⚡ 开始处理用户 {user_id} 的消息 (任务ID: {task_id[:8]}...)")
+            
+            # 使用优化后的handle_stream_chat
+            await handle_stream_chat(user_id, message_content, connection_id, authenticated_user, conversation_id)
+            
+            processing_time = asyncio.get_event_loop().time() - start_time
+            self._stats["messages_processed"] += 1
+            logger.info(f"✅ 用户 {user_id} 消息处理完成，耗时 {processing_time:.2f}s (任务ID: {task_id[:8]}...)")
+            
+        except Exception as e:
+            self._stats["errors"] += 1
+            logger.error(f"❌ 用户 {user_id} 消息处理失败: {e} (任务ID: {task_id[:8]}...)")
+            
+            # 发送错误消息
+            error_message = WebSocketMessage(
+                type=MessageType.AI_ERROR,
+                content={"error": "消息处理失败", "details": str(e)},
+                sender_id="system",
+                receiver_id=None,
+                room_id=f"user_{user_id}_room",
+                timestamp=datetime.utcnow()
+            )
+            await self.connection_manager.send_to_connection(connection_id, error_message)
+    
+    def _cleanup_task(self, task_id: str):
+        """清理完成的任务"""
+        if task_id in self._processing_tasks:
+            del self._processing_tasks[task_id]
+            self._stats["active_tasks"] = len(self._processing_tasks)
+            logger.debug(f"🧹 清理任务: {task_id[:8]}..., 剩余活跃任务: {self._stats['active_tasks']}")
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """获取消息处理统计"""
+        return self._stats.copy()
     
     async def handle_switch_conversation(self, connection_id: str, message: WebSocketMessage, authenticated_user: Optional[Dict[str, Any]] = None):
         """处理会话切换消息"""
@@ -796,6 +811,14 @@ async def websocket_endpoint(
     user_room_id = f"user_{user_id}_room"
     
     logger.info(f"新的 WebSocket 连接请求: {connection_id}, 用户: {user_info}, 房间: {user_room_id}")
+    
+    # 确保性能管理器已初始化
+    try:
+        await ensure_services_initialized()
+    except Exception as e:
+        logger.error(f"性能管理器初始化失败: {e}")
+        await websocket.close(code=4000, reason="服务初始化失败")
+        return
     
     try:
         # 建立新连接（允许同一用户多个连接）
@@ -1024,6 +1047,92 @@ async def get_rooms(current_user: Dict[str, Any] = CurrentUser):
         "total": len(rooms),
         "rooms": rooms
     }
+
+
+@websocket_http_router.get("/performance/stats")
+async def get_performance_stats(current_user: Dict[str, Any] = CurrentUser):
+    """获取性能统计信息"""
+    try:
+        # 获取性能管理器统计
+        perf_stats = performance_manager.get_stats()
+        
+        # 获取消息处理器统计
+        message_handler_stats = custom_message_handler.get_stats()
+        
+        # 获取service_manager统计
+        service_stats = service_manager.get_stats()
+        
+        # 合并统计信息
+        combined_stats = {
+            "performance_manager": perf_stats,
+            "message_handler": message_handler_stats,
+            "service_manager": service_stats,
+            "websocket_connections": {
+                "total_active": len(connection_manager.active_connections),
+                "total_rooms": len(connection_manager.rooms)
+            },
+            "optimization_status": {
+                "agent_manager_singleton": performance_manager._assistant_manager_initialized,
+                "session_manager_cache": len(performance_manager._session_managers) > 0,
+                "user_context_cache": len(performance_manager._user_contexts) > 0,
+                "async_message_processing": True
+            }
+        }
+        
+        return {
+            "status": "success",
+            "data": combined_stats
+        }
+        
+    except Exception as e:
+        logger.error(f"获取性能统计失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取性能统计失败: {str(e)}")
+
+
+@websocket_http_router.post("/performance/cleanup")
+async def cleanup_expired_caches(current_user: Dict[str, Any] = CurrentUser):
+    """清理过期缓存"""
+    try:
+        # 清理性能管理器的过期缓存
+        performance_manager.cleanup_expired_caches()
+        
+        # 清理service_manager的过期缓存
+        service_manager.clear_expired_cache()
+        
+        return {
+            "status": "success",
+            "message": "过期缓存已清理"
+        }
+        
+    except Exception as e:
+        logger.error(f"清理过期缓存失败: {e}")
+        raise HTTPException(status_code=500, detail=f"清理过期缓存失败: {str(e)}")
+
+
+@websocket_http_router.post("/performance/refresh_user_context/{user_id}")
+async def refresh_user_context(user_id: int, current_user: Dict[str, Any] = CurrentUser):
+    """刷新指定用户的上下文缓存"""
+    try:
+        # 使指定用户的上下文缓存失效
+        performance_manager.invalidate_user_context(user_id)
+        
+        # 重新获取用户上下文（强制刷新）
+        context = performance_manager.get_user_context(user_id, force_refresh=True)
+        
+        return {
+            "status": "success",
+            "message": f"用户 {user_id} 的上下文缓存已刷新",
+            "user_context": {
+                "user_id": context.user_id,
+                "user_name": context.user_name,
+                "preferences_count": len(context.user_preferences),
+                "todos_count": len(context.todos)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"刷新用户 {user_id} 上下文失败: {e}")
+        raise HTTPException(status_code=500, detail=f"刷新用户上下文失败: {str(e)}")
 
 # 导出路由器
 websocket_router.include_router(websocket_http_router) 
