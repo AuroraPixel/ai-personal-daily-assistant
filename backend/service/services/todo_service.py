@@ -7,7 +7,7 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, case
+from sqlalchemy import and_, or_, case, desc, asc
 from core.database_core import DatabaseClient
 from ..models.todo import Todo
 from ..models.note import Note
@@ -135,13 +135,13 @@ class TodoService:
                     query = query.filter(Todo.priority == priority)
                 
                 todos = query.order_by(
-                    Todo.completed.asc(),  # 未完成的优先显示
+                    asc(Todo.completed),  # 未完成的优先显示
                     case(
                         (Todo.due_date.is_(None), 1),
                         else_=0
                     ).asc(),  # 空值在后
-                    Todo.due_date.asc(),  # 按截止日期排序
-                    Todo.priority.desc()  # 按优先级排序
+                    asc(Todo.due_date),  # 按截止日期排序
+                    desc(Todo.priority)  # 按优先级排序
                 ).offset(offset).limit(limit).all()
                 
                 return todos
@@ -300,11 +300,12 @@ class TodoService:
             print(f"获取过期待办事项失败: {e}")
             return []
     
-    def get_todos_by_note(self, note_id: int) -> List[Todo]:
+    def get_todos_by_note(self, user_id: int, note_id: int) -> List[Todo]:
         """
         获取关联到特定笔记的待办事项
         
         Args:
+            user_id: 用户ID
             note_id: 笔记ID
             
         Returns:
@@ -313,6 +314,7 @@ class TodoService:
         try:
             with self.db_client.get_session() as session:
                 todos = session.query(Todo).filter(
+                    Todo.user_id == user_id,
                     Todo.note_id == note_id
                 ).order_by(
                     Todo.completed.asc(),
@@ -446,6 +448,39 @@ class TodoService:
             'note_id': getattr(todo, 'note_id', None),
             'created_at': todo.created_at.isoformat() if hasattr(todo, 'created_at') and todo.created_at is not None else None,
             'completed_at': todo.completed_at.isoformat() if hasattr(todo, 'completed_at') and todo.completed_at is not None else None
+        }
+    
+    def get_user_stats(self, user_id: int) -> Dict[str, Any]:
+        """
+        获取用户待办事项统计信息（API接口方法）
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            统计信息字典
+        """
+        stats = self.get_todos_statistics(user_id)
+        if not stats:
+            return {
+                'total': 0,
+                'completed': 0,
+                'pending': 0,
+                'overdue': 0,
+                'high_priority': 0,
+                'medium_priority': 0,
+                'low_priority': 0
+            }
+        
+        # 转换为前端期望的格式
+        return {
+            'total': stats.get('total_todos', 0),
+            'completed': stats.get('completed_todos', 0),
+            'pending': stats.get('pending_todos', 0),
+            'overdue': stats.get('overdue_todos', 0),
+            'high_priority': stats.get('priority_stats', {}).get('high', 0),
+            'medium_priority': stats.get('priority_stats', {}).get('medium', 0),
+            'low_priority': stats.get('priority_stats', {}).get('low', 0)
         }
     
     def close(self):

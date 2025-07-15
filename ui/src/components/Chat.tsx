@@ -163,9 +163,9 @@ export function Chat({
   const statusInfo = getConnectionStatusInfo();
 
   return (
-    <div className="flex flex-col h-full flex-1 bg-white shadow-md border border-gray-300 border-t-0 rounded-xl relative">
+    <div className="flex flex-col h-full flex-1 bg-gray-50 md:bg-white md:shadow-md md:border md:border-gray-300 md:border-t-0 md:rounded-xl relative">
       <style>{typewriterStyles}</style>
-      <div className="bg-blue-600 text-white h-12 px-4 flex items-center justify-between rounded-t-xl border-b border-blue-500">
+      <div className="bg-blue-600 text-white h-12 px-4 flex items-center justify-between md:rounded-t-xl border-b border-blue-500">
         <h2 className="font-semibold text-sm sm:text-base lg:text-lg">
         Assistant View
         </h2>
@@ -206,7 +206,7 @@ export function Chat({
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto min-h-0 md:px-4 pt-4 pb-20">
+      <div className="flex-1 overflow-y-auto min-h-0 px-4 pt-4 pb-20 bg-gray-50 md:bg-white">
         {messages.map((msg, idx) => {
           if (msg.content === "DISPLAY_SEAT_MAP") return null; // Skip rendering marker message
           return (
@@ -287,7 +287,7 @@ export function Chat({
       </div>
 
       {/* Input area */}
-      <div className="p-2 md:px-4">
+      <div className="p-3 md:p-4 bg-gray-50 md:bg-white border-t border-gray-200/50 md:border-t-0">
         {/* Error message */}
         {lastError && (
           <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
@@ -306,12 +306,12 @@ export function Chat({
 
         <div className="flex items-center">
           <div className="flex w-full items-center pb-4 md:pb-1">
-            <div className={`flex w-full flex-col rounded-2xl p-3 bg-white border-2 transition-all duration-200 ${
+            <div className={`flex w-full flex-col rounded-xl md:rounded-2xl p-2 md:p-3 transition-all duration-200 ${
               wsStatus !== 'connected' 
-                ? 'border-gray-200 bg-gray-50' 
-                : 'border-blue-200 shadow-lg hover:shadow-xl focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100'
+                ? 'bg-transparent' 
+                : 'bg-transparent md:bg-white md:border-2 md:border-gray-200 md:shadow-lg md:hover:shadow-xl md:focus-within:border-blue-400 md:focus-within:ring-2 md:focus-within:ring-blue-100'
             }`}>
-              <div className="flex items-end gap-3">
+              <div className="flex items-end gap-2">
                 <div className="flex min-w-0 flex-1 flex-col">
                   <textarea
                     id="prompt-textarea"
@@ -323,10 +323,10 @@ export function Chat({
                         ? "连接断开，无法发送消息"
                         : "在这里输入您的消息..."
                     }
-                    className={`resize-none border focus:outline-none text-sm px-2 py-3 rounded-lg transition-all duration-200 ${
+                    className={`resize-none border focus:outline-none text-sm px-3 py-3 rounded-lg transition-all duration-200 ${
                       wsStatus !== 'connected' 
-                        ? 'bg-gray-50 text-gray-400 border-gray-200' 
-                        : 'bg-gray-50 hover:bg-gray-100 focus:bg-white text-gray-900 placeholder-gray-500 border-gray-300 focus:border-blue-500'
+                        ? 'bg-gray-100 text-gray-400 border-gray-200' 
+                        : 'bg-white border-gray-200 hover:bg-gray-50 focus:bg-white text-gray-900 placeholder-gray-500 focus:border-blue-500 md:border-gray-300'
                     }`}
                     style={{ minHeight: '44px', maxHeight: '120px' }}
                     value={inputText}
@@ -339,17 +339,23 @@ export function Chat({
                 </div>
                 <button
                   disabled={wsStatus !== 'connected' || !inputText.trim() || isSending}
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 border ${
+                  className={`flex h-11 px-3 items-center justify-center rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 border ${
                     wsStatus !== 'connected' || !inputText.trim() || isSending
-                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed border-gray-300'
-                      : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 hover:shadow-lg transform hover:scale-105 focus:ring-blue-300 border-blue-600'
+                      ? 'bg-gray-300 text-gray-400 cursor-not-allowed border-gray-300'
+                      : 'bg-gradient-to-r from-primary to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 hover:shadow-lg transform hover:scale-105 focus:ring-blue-300 border-primary shadow-md'
                   }`}
                   onClick={handleSend}
                 >
                   {isSending ? (
-                    <RefreshCw className="h-5 w-5 animate-spin" />
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin mr-1" />
+                      <span className="text-xs font-medium">发送中</span>
+                    </>
                   ) : (
-                    <Send className="h-5 w-5" />
+                    <>
+                      <Send className="h-4 w-4 mr-1" />
+                      <span className="text-xs font-medium">发送</span>
+                    </>
                   )}
                 </button>
               </div>
