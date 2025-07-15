@@ -661,10 +661,10 @@ const Dashboard: React.FC = () => {
     <ErrorBoundary>
       <div className="h-screen bg-gray-50 flex flex-col">
         {/* 顶部导航栏 */}
-        <header className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
+        <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-200/30 px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-semibold text-gray-900">
+              <h1 className="text-xl font-semibold text-gray-800">
                 AI 个人助手
               </h1>
               <div className="flex items-center space-x-2">
@@ -702,7 +702,7 @@ const Dashboard: React.FC = () => {
                           });
                       }
                     }}
-                    className="text-xs text-blue-600 hover:text-blue-700 px-2 py-1 bg-blue-50 rounded border border-blue-200 hover:bg-blue-100"
+                    className="text-xs text-primary hover:text-primary/80 px-2 py-1 bg-primary/10 rounded border border-primary/20 hover:bg-primary/20"
                   >
                     重连
                   </button>
@@ -734,9 +734,9 @@ const Dashboard: React.FC = () => {
         {/* 主要内容区域 */}
         <div className="flex-1 flex overflow-hidden">
           {/* 桌面端布局 */}
-          <div className="hidden md:flex flex-1">
+          <div className="hidden md:flex flex-1 gap-4 p-4">
                                       {/* 左侧面板 - Agent View (40%) */}
-             <div className="w-2/5 bg-white border-r border-gray-200 flex flex-col">
+             <div className="w-2/5 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-sm flex flex-col">
                <AgentPanel
                  agents={agents}
                  currentAgent={currentAgent}
@@ -747,7 +747,7 @@ const Dashboard: React.FC = () => {
              </div>
 
              {/* 右侧聊天区域 - Assistant View (60%) */}
-             <div className="w-3/5 flex flex-col">
+             <div className="w-3/5 flex flex-col bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-sm">
                <Chat
                  messages={messages}
                  onSendMessage={handleSendMessage}
@@ -763,57 +763,57 @@ const Dashboard: React.FC = () => {
 
           {/* 移动端布局 */}
           <div className="md:hidden flex-1 flex flex-col">
-            {/* 移动端标签切换 */}
-            <div className="bg-white border-b border-gray-200 px-4 py-2">
-              <div className="flex space-x-1">
+            {/* 移动端内容 - 撑满屏幕，无边框 */}
+            <div className="flex-1 overflow-hidden bg-gray-50">
+              {activeTab === 'agent' ? (
+                <AgentPanel
+                  agents={agents}
+                  currentAgent={currentAgent}
+                  events={events}
+                  guardrails={guardrails}
+                  context={context}
+                />
+              ) : (
+                <Chat
+                  messages={messages}
+                  onSendMessage={handleSendMessage}
+                  isLoading={isLoading || isRestoringSession}
+                  streamingResponse={streamingResponse}
+                  wsStatus={wsStatus}
+                  conversationId={conversationId}
+                  onSelectConversation={handleSelectConversation}
+                  conversationListKey={conversationListKey}
+                />
+              )}
+            </div>
+
+            {/* 移动端底部导航栏 - 铺满屏幕 */}
+            <div className="bg-gray-100/90 backdrop-blur-sm border-t border-gray-300/30 px-0 py-2 safe-bottom">
+              <div className="flex">
                 <button
                   onClick={() => setActiveTab('agent')}
-                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                  className={`flex-1 py-3 px-4 text-sm font-medium transition-all duration-200 ${
                     activeTab === 'agent'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200/50'
                   }`}
                 >
-                  <Bot className="w-4 h-4 mx-auto mb-1" />
-                  智能体
+                  <Bot className="w-5 h-5 mx-auto mb-1" />
+                  <span className="block">智能体</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('customer')}
-                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                  className={`flex-1 py-3 px-4 text-sm font-medium transition-all duration-200 ${
                     activeTab === 'customer'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200/50'
                   }`}
                 >
-                  <MessageCircle className="w-4 h-4 mx-auto mb-1" />
-                  聊天
+                  <MessageCircle className="w-5 h-5 mx-auto mb-1" />
+                  <span className="block">聊天</span>
                 </button>
               </div>
             </div>
-
-                         {/* 移动端内容 */}
-             <div className="flex-1 overflow-hidden">
-               {activeTab === 'agent' ? (
-                 <AgentPanel
-                   agents={agents}
-                   currentAgent={currentAgent}
-                   events={events}
-                   guardrails={guardrails}
-                   context={context}
-                 />
-               ) : (
-                 <Chat
-                   messages={messages}
-                   onSendMessage={handleSendMessage}
-                   isLoading={isLoading || isRestoringSession}
-                   streamingResponse={streamingResponse}
-                   wsStatus={wsStatus}
-                   conversationId={conversationId}
-                   onSelectConversation={handleSelectConversation}
-                   conversationListKey={conversationListKey}
-                 />
-               )}
-             </div>
           </div>
         </div>
 
