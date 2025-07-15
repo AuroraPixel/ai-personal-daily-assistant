@@ -168,10 +168,15 @@ const Dashboard: React.FC = () => {
     // 确保user_id是字符串格式
     const userId = typeof user.user_id === 'string' ? user.user_id : String(user.user_id);
     
-    // 使用认证用户信息创建WebSocket连接，如果有恢复的会话ID则使用它
-    const wsService = createWebSocketService(userId, user.username, conversationId || undefined, token);
+    // 使用认证用户信息创建WebSocket连接，不传递conversationId，后续通过setConversationId更新
+    const wsService = createWebSocketService(userId, user.username, undefined, token);
     
     if (wsService) {
+      // 如果有恢复的会话ID，设置到WebSocket服务中
+      if (conversationId) {
+        console.log('🔄 设置恢复的会话ID到WebSocket服务:', conversationId);
+        wsService.setConversationId(conversationId);
+      }
       // 监听连接状态
       const handleStatus = (status: WebSocketConnectionStatus) => {
         console.log('📡 Dashboard 收到状态更新:', status);
@@ -299,6 +304,7 @@ const Dashboard: React.FC = () => {
             setConversationId(content.conversation_id);
             const wsService = getWebSocketService();
             if (wsService) {
+              console.log('🔄 更新WebSocket服务的会话ID:', content.conversation_id);
               wsService.setConversationId(content.conversation_id);
             }
             // 保存新的会话ID到localStorage
@@ -343,6 +349,7 @@ const Dashboard: React.FC = () => {
             setConversationId(response.conversation_id);
             const wsService = getWebSocketService();
             if (wsService) {
+              console.log('🔄 更新WebSocket服务的会话ID:', response.conversation_id);
               wsService.setConversationId(response.conversation_id);
             }
             // 保存新的会话ID到localStorage
@@ -476,7 +483,7 @@ const Dashboard: React.FC = () => {
       console.error('❌ 无法创建WebSocket服务');
       setWsStatus('error');
     }
-  }, [user, token, conversationId]);
+  }, [user, token]);
 
   // 其他业务逻辑方法
   const handleSelectConversation = async (selectedConversationId: string) => {
@@ -572,7 +579,7 @@ const Dashboard: React.FC = () => {
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
     
-    console.log('📤 发送消息:', content);
+    console.log('📤 发送消息:', content, '当前会话ID:', conversationId);
     setIsLoading(true);
     setStreamingResponse('');
     
@@ -591,6 +598,7 @@ const Dashboard: React.FC = () => {
     const wsService = getWebSocketService();
     if (wsService) {
       try {
+        console.log('🔄 WebSocket服务当前会话ID:', wsService.conversationId);
         wsService.sendChatMessage(content.trim());
       } catch (error) {
         console.error('发送消息失败:', error);
@@ -678,6 +686,13 @@ const Dashboard: React.FC = () => {
                       if (user && token) {
                         const userId = typeof user.user_id === 'string' ? user.user_id : String(user.user_id);
                         const wsService = createWebSocketService(userId, user.username, undefined, token);
+                        
+                        // 如果有当前会话ID，设置到WebSocket服务中
+                        if (conversationId) {
+                          console.log('🔄 重连时设置会话ID到WebSocket服务:', conversationId);
+                          wsService.setConversationId(conversationId);
+                        }
+                        
                         wsService.connect()
                           .then(() => {
                             console.log('✅ 手动重连成功');

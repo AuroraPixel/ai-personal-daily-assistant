@@ -81,6 +81,7 @@ export class WebSocketService {
   }
   
   setConversationId(conversationId: string | null) {
+    console.log('🔄 WebSocket设置会话ID:', this._conversationId, '->', conversationId);
     this._conversationId = conversationId || undefined;
   }
   
