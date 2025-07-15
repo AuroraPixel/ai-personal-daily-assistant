@@ -14,7 +14,7 @@ import {
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import type { Note, NoteCreateRequest, NoteUpdateRequest, PersonDataFilter } from '../lib/types';
-import { NoteService } from '../services/personDataService';
+import { noteAPI } from '../services/apiService';
 import { useAppSelector } from '../store/hooks';
 
 interface NotesPanelProps {
@@ -52,13 +52,14 @@ export function NotesPanel({ userId }: NotesPanelProps) {
   const loadNotes = async () => {
     try {
       setLoading(true);
-      const response = await NoteService.getUserNotes(userId, {
+      const response = await noteAPI.getNotes(userId.toString(), {
         tag: filter.tag,
         status: filter.status,
         search: filter.search,
         limit: 50
       });
-      setNotes(response.data || []);
+      // 适配后端新数据结构：response.data.data
+      setNotes(response.data?.data || []);
     } catch (error) {
       console.error('加载笔记失败:', error);
       setNotes([]); // 出错时设置为空数组
@@ -70,8 +71,9 @@ export function NotesPanel({ userId }: NotesPanelProps) {
   // 加载可用标签
   const loadTags = async () => {
     try {
-      const response = await NoteService.getNoteTags(userId);
-      setAvailableTags(response.data?.tags || []);
+      const response = await noteAPI.getTags(userId.toString());
+      // 适配后端新数据结构：response.data.data
+      setAvailableTags(response.data?.data || []);
     } catch (error) {
       console.error('加载标签失败:', error);
       setAvailableTags([]); // 出错时设置为空数组
@@ -88,12 +90,15 @@ export function NotesPanel({ userId }: NotesPanelProps) {
 
     try {
       setLoading(true);
-      const response = await NoteService.searchNotes(userId, searchQuery, {
+      const response = await noteAPI.searchNotes(userId.toString(), {
+        query: searchQuery,
         tag: filter.tag,
         status: filter.status,
-        limit: 20
+        limit: 20,
+        use_vector_search: true
       });
-      setNotes(response.data || []);
+      // 适配后端新数据结构：response.data.data
+      setNotes(response.data?.data || []);
       setShowSearchResults(true);
     } catch (error) {
       console.error('搜索笔记失败:', error);
@@ -107,7 +112,7 @@ export function NotesPanel({ userId }: NotesPanelProps) {
   const createNote = async () => {
     try {
       setOperationLoading(true);
-      const response = await NoteService.createNote(userId, formData);
+      const response = await noteAPI.createNote(userId.toString(), formData);
       if (response.success) {
         // 关闭创建窗口
         setShowCreateForm(false);
@@ -140,7 +145,7 @@ export function NotesPanel({ userId }: NotesPanelProps) {
         status: formData.status
       };
       
-      const response = await NoteService.updateNote(userId, editingNote.id, updateData);
+      const response = await noteAPI.updateNote(userId.toString(), editingNote.id.toString(), updateData);
       if (response.success) {
         // 关闭编辑窗口
         setEditingNote(null);
@@ -167,7 +172,7 @@ export function NotesPanel({ userId }: NotesPanelProps) {
 
     try {
       setOperationLoading(true);
-      const response = await NoteService.deleteNote(userId, noteId);
+      const response = await noteAPI.deleteNote(userId.toString(), noteId.toString());
       if (response.success) {
         // 刷新数据
         await Promise.all([loadNotes(), loadTags()]);
