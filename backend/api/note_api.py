@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Path, Query, Body
 from pydantic import BaseModel, Field
 
 # 导入认证核心模块
-from core.auth_core import CurrentUser
+from core.auth_core import CurrentUser, success_response, error_response, not_found_response, validation_error_response, internal_error_response
 
 # 导入服务管理器
 from service.service_manager import service_manager
@@ -45,31 +45,7 @@ class NoteUpdateRequest(BaseModel):
     status: Optional[str] = Field(None, description="笔记状态")
 
 
-class NoteResponse(BaseModel):
-    """笔记响应模型"""
-    success: bool
-    message: str
-    data: Optional[Dict[str, Any]] = None
 
-
-class NoteListResponse(BaseModel):
-    """笔记列表响应模型"""
-    success: bool
-    message: str
-    data: Optional[List[Dict[str, Any]]] = None
-    total: int = 0
-    user_id: int
-
-
-class NoteSearchResponse(BaseModel):
-    """搜索笔记响应模型"""
-    success: bool
-    message: str
-    data: Optional[List[Dict[str, Any]]] = None
-    total: int = 0
-    user_id: int
-    query: Optional[str] = None
-    search_type: Optional[str] = None
 
 
 class NoteSearchRequest(BaseModel):
@@ -173,21 +149,21 @@ async def search_notes(
                     "search_type": "text"
                 })
         
-        return NoteSearchResponse(
-            success=True,
-            message=f"搜索完成，找到 {len(search_results)} 条结果",
-            data=search_results,
-            total=len(search_results),
-            user_id=user_id,
-            query=request.query,
-            search_type="vector" if request.use_vector_search else "text"
-        )
+        response_data = {
+            "data": search_results,
+            "total": len(search_results),
+            "user_id": user_id,
+            "query": request.query,
+            "search_type": "vector" if request.use_vector_search else "text"
+        }
+        
+        return success_response(response_data, f"搜索完成，找到 {len(search_results)} 条结果")
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"搜索笔记失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"搜索笔记失败: {str(e)}")
+        return internal_error_response(f"搜索笔记失败: {str(e)}")
 
 
 @note_router.get("/{user_id}/tags")
@@ -208,7 +184,7 @@ async def get_user_note_tags(
     try:
         # 验证用户只能访问自己的笔记标签
         if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权访问其他用户的笔记标签")
+            return internal_error_response("无权访问其他用户的笔记标签")
         
         # 使用服务管理器获取笔记服务
         note_service = service_manager.get_service(
@@ -219,19 +195,19 @@ async def get_user_note_tags(
         # 获取标签列表
         tags = note_service.get_user_tags(user_id)
         
-        return {
-            "success": True,
-            "message": f"成功获取用户 {user_id} 的笔记标签",
+        response_data = {
             "data": tags,
             "total": len(tags),
             "user_id": user_id
         }
         
+        return success_response(response_data, f"成功获取用户 {user_id} 的笔记标签")
+        
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"获取用户笔记标签失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取笔记标签失败: {str(e)}")
+        return internal_error_response(f"获取笔记标签失败: {str(e)}")
 
 
 @note_router.post("/{user_id}")
@@ -254,7 +230,7 @@ async def create_note(
     try:
         # 验证用户只能创建自己的笔记
         if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权为其他用户创建笔记")
+            return internal_error_response("无权为其他用户创建笔记")
         
         # 使用服务管理器获取笔记服务
         note_service = service_manager.get_service(
@@ -272,7 +248,7 @@ async def create_note(
         )
         
         if not note:
-            raise HTTPException(status_code=400, detail="创建笔记失败")
+            return internal_error_response("创建笔记失败")
         
         # 转换为响应格式
         note_data = {
@@ -287,17 +263,13 @@ async def create_note(
             "last_updated": note.last_updated.isoformat() if note.last_updated else None
         }
         
-        return NoteResponse(
-            success=True,
-            message="笔记创建成功",
-            data=note_data
-        )
+        return success_response(note_data, "笔记创建成功")
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"创建笔记失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"创建笔记失败: {str(e)}")
+        return internal_error_response(f"创建笔记失败: {str(e)}")
 
 
 @note_router.get("/{user_id}")
@@ -328,7 +300,7 @@ async def get_user_notes(
     try:
         # 验证用户只能访问自己的笔记
         if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权访问其他用户的笔记")
+            return internal_error_response("无权访问其他用户的笔记")
         
         # 使用服务管理器获取笔记服务
         note_service = service_manager.get_service(
@@ -362,19 +334,19 @@ async def get_user_notes(
             }
             notes_data.append(note_data)
         
-        return NoteListResponse(
-            success=True,
-            message=f"成功获取用户 {user_id} 的笔记列表",
-            data=notes_data,
-            total=len(notes_data),
-            user_id=user_id
-        )
+        response_data = {
+            "data": notes_data,
+            "total": len(notes_data),
+            "user_id": user_id
+        }
+        
+        return success_response(response_data, f"成功获取用户 {user_id} 的笔记列表")
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"获取用户笔记列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取笔记列表失败: {str(e)}")
+        return internal_error_response(f"获取笔记列表失败: {str(e)}")
 
 
 @note_router.get("/{user_id}/{note_id}")
@@ -397,7 +369,7 @@ async def get_note(
     try:
         # 验证用户只能访问自己的笔记
         if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权访问其他用户的笔记")
+            return internal_error_response("无权访问其他用户的笔记")
         
         # 使用服务管理器获取笔记服务
         note_service = service_manager.get_service(
@@ -409,11 +381,11 @@ async def get_note(
         note = note_service.get_note(note_id)
         
         if not note:
-            raise HTTPException(status_code=404, detail="笔记不存在")
+            return not_found_response("笔记不存在")
         
         # 验证笔记属于当前用户
         if note.user_id != user_id:
-            raise HTTPException(status_code=403, detail="无权访问此笔记")
+            return internal_error_response("无权访问此笔记")
         
         # 转换为响应格式
         note_data = {
@@ -428,17 +400,13 @@ async def get_note(
             "last_updated": note.last_updated.isoformat() if note.last_updated else None
         }
         
-        return NoteResponse(
-            success=True,
-            message="成功获取笔记详情",
-            data=note_data
-        )
+        return success_response(note_data, "成功获取笔记详情")
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"获取笔记详情失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取笔记详情失败: {str(e)}")
+        return internal_error_response(f"获取笔记详情失败: {str(e)}")
 
 
 @note_router.put("/{user_id}/{note_id}")
@@ -463,7 +431,7 @@ async def update_note(
     try:
         # 验证用户只能更新自己的笔记
         if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权更新其他用户的笔记")
+            return internal_error_response("无权更新其他用户的笔记")
         
         # 使用服务管理器获取笔记服务
         note_service = service_manager.get_service(
@@ -474,10 +442,10 @@ async def update_note(
         # 先获取笔记验证存在性和权限
         note = note_service.get_note(note_id)
         if not note:
-            raise HTTPException(status_code=404, detail="笔记不存在")
+            return not_found_response("笔记不存在")
         
         if note.user_id != user_id:
-            raise HTTPException(status_code=403, detail="无权更新此笔记")
+            return internal_error_response("无权更新此笔记")
         
         # 更新笔记
         updated_note = note_service.update_note(
@@ -489,7 +457,7 @@ async def update_note(
         )
         
         if not updated_note:
-            raise HTTPException(status_code=400, detail="更新笔记失败")
+            return internal_error_response("更新笔记失败")
         
         # 转换为响应格式
         note_data = {
@@ -504,17 +472,13 @@ async def update_note(
             "last_updated": updated_note.last_updated.isoformat() if updated_note.last_updated else None
         }
         
-        return NoteResponse(
-            success=True,
-            message="笔记更新成功",
-            data=note_data
-        )
+        return success_response(note_data, "笔记更新成功")
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"更新笔记失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"更新笔记失败: {str(e)}")
+        return internal_error_response(f"更新笔记失败: {str(e)}")
 
 
 @note_router.delete("/{user_id}/{note_id}")
@@ -537,7 +501,7 @@ async def delete_note(
     try:
         # 验证用户只能删除自己的笔记
         if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权删除其他用户的笔记")
+            return internal_error_response("无权删除其他用户的笔记")
         
         # 使用服务管理器获取笔记服务
         note_service = service_manager.get_service(
@@ -548,25 +512,21 @@ async def delete_note(
         # 先获取笔记验证存在性和权限
         note = note_service.get_note(note_id)
         if not note:
-            raise HTTPException(status_code=404, detail="笔记不存在")
+            return not_found_response("笔记不存在")
         
         if note.user_id != user_id:
-            raise HTTPException(status_code=403, detail="无权删除此笔记")
+            return internal_error_response("无权删除此笔记")
         
         # 删除笔记
         success = note_service.delete_note(note_id)
         
         if not success:
-            raise HTTPException(status_code=400, detail="删除笔记失败")
+            return internal_error_response("删除笔记失败")
         
-        return NoteResponse(
-            success=True,
-            message="笔记删除成功",
-            data=None
-        )
+        return success_response(None, "笔记删除成功")
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"删除笔记失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"删除笔记失败: {str(e)}") 
+        return internal_error_response(f"删除笔记失败: {str(e)}") 

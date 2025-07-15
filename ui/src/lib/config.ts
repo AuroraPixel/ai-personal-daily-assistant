@@ -63,18 +63,24 @@ export const API_ENDPOINTS = {
   
   // 笔记相关
   NOTE: {
-    LIST: '/api/notes',
-    CREATE: '/api/notes',
-    UPDATE: (noteId: string) => `/api/notes/${noteId}`,
-    DELETE: (noteId: string) => `/api/notes/${noteId}`,
+    LIST: (userId: string) => `/api/notes/${userId}`,
+    CREATE: (userId: string) => `/api/notes/${userId}`,
+    UPDATE: (userId: string, noteId: string) => `/api/notes/${userId}/${noteId}`,
+    DELETE: (userId: string, noteId: string) => `/api/notes/${userId}/${noteId}`,
+    SEARCH: (userId: string) => `/api/notes/${userId}/search`,
+    TAGS: (userId: string) => `/api/notes/${userId}/tags`,
   },
   
   // 待办事项相关
   TODO: {
-    LIST: '/api/todos',
-    CREATE: '/api/todos',
-    UPDATE: (todoId: string) => `/api/todos/${todoId}`,
-    DELETE: (todoId: string) => `/api/todos/${todoId}`,
+    LIST: (userId: string) => `/api/todos/${userId}`,
+    CREATE: (userId: string) => `/api/todos/${userId}`,
+    UPDATE: (userId: string, todoId: string) => `/api/todos/${userId}/${todoId}`,
+    DELETE: (userId: string, todoId: string) => `/api/todos/${userId}/${todoId}`,
+    COMPLETE: (userId: string, todoId: string) => `/api/todos/${userId}/${todoId}/complete`,
+    UNCOMPLETE: (userId: string, todoId: string) => `/api/todos/${userId}/${todoId}/uncomplete`,
+    STATS: (userId: string) => `/api/todos/${userId}/stats`,
+    BY_NOTE: (userId: string, noteId: string) => `/api/todos/${userId}/by-note/${noteId}`,
   },
 };
 

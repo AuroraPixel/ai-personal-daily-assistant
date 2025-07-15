@@ -17,7 +17,7 @@ import {
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import type { Todo, TodoCreateRequest, TodoUpdateRequest, PersonDataFilter } from '../lib/types';
-import { TodoService } from '../services/personDataService';
+import { todoAPI } from '../services/apiService';
 
 interface TodosPanelProps {
   userId: number;
@@ -46,12 +46,13 @@ export function TodosPanel({ userId }: TodosPanelProps) {
   const loadTodos = async () => {
     try {
       setLoading(true);
-      const response = await TodoService.getUserTodos(userId, {
+      const response = await todoAPI.getTodos(userId.toString(), {
         completed: filter.completed,
         priority: filter.priority,
         overdue: filter.overdue,
         limit: 50
       });
+      // 修正：后端success_response会将数据包装在data字段中
       setTodos(response.data || []);
     } catch (error) {
       console.error('加载待办事项失败:', error);
@@ -64,8 +65,9 @@ export function TodosPanel({ userId }: TodosPanelProps) {
   // 加载统计信息
   const loadStats = async () => {
     try {
-      const response = await TodoService.getTodoStats(userId);
-      setStats(response.data);
+      const response = await todoAPI.getStats(userId.toString());
+      // 修正：后端get_todo_stats返回包含data字段的结构，需要response.data.data
+      setStats(response.data?.data);
     } catch (error) {
       console.error('加载统计信息失败:', error);
     }
@@ -80,7 +82,7 @@ export function TodosPanel({ userId }: TodosPanelProps) {
         due_date: formData.due_date ? new Date(formData.due_date).toISOString() : undefined
       };
       
-      const response = await TodoService.createTodo(userId, createData);
+      const response = await todoAPI.createTodo(userId.toString(), createData);
       if (response.success) {
         // 关闭创建窗口
         setShowCreateForm(false);
@@ -114,7 +116,7 @@ export function TodosPanel({ userId }: TodosPanelProps) {
         note_id: formData.note_id
       };
       
-      const response = await TodoService.updateTodo(userId, editingTodo.id, updateData);
+      const response = await todoAPI.updateTodo(userId.toString(), editingTodo.id.toString(), updateData);
       if (response.success) {
         // 关闭编辑窗口
         setEditingTodo(null);
@@ -141,7 +143,7 @@ export function TodosPanel({ userId }: TodosPanelProps) {
 
     try {
       setOperationLoading(true);
-      const response = await TodoService.deleteTodo(userId, todoId);
+      const response = await todoAPI.deleteTodo(userId.toString(), todoId.toString());
       if (response.success) {
         // 刷新数据
         await Promise.all([loadTodos(), loadStats()]);
@@ -162,9 +164,9 @@ export function TodosPanel({ userId }: TodosPanelProps) {
     try {
       setOperationLoading(true);
       if (todo.completed) {
-        await TodoService.uncompleteTodo(userId, todo.id);
+        await todoAPI.uncompleteTodo(userId.toString(), todo.id.toString());
       } else {
-        await TodoService.completeTodo(userId, todo.id);
+        await todoAPI.completeTodo(userId.toString(), todo.id.toString());
       }
       // 刷新数据
       await Promise.all([loadTodos(), loadStats()]);
