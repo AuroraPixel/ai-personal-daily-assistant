@@ -39,6 +39,8 @@ interface ChatProps {
   conversationId?: string | null;
   /** Callback when conversation is selected */
   onSelectConversation?: (conversationId: string) => void;
+  /** Key to trigger conversation list refresh */
+  conversationListKey?: number;
 }
 
 export function Chat({ 
@@ -48,7 +50,8 @@ export function Chat({
   streamingResponse, 
   wsStatus = 'disconnected',
   conversationId,
-  onSelectConversation
+  onSelectConversation,
+  conversationListKey
 }: ChatProps) {
   const { user } = useAppSelector((state) => state.auth);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -362,6 +365,7 @@ export function Chat({
         onSelectConversation={handleConversationSelect}
         currentConversationId={conversationId || null}
         userId={user?.user_id ? parseInt(String(user.user_id)) : 1}
+        refreshKey={conversationListKey}
       />
     </div>
   );

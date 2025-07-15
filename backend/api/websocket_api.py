@@ -710,9 +710,10 @@ async def handle_stream_chat(user_id: str, message: str, connection_id: str, aut
             await connection_manager.send_to_connection(connection_id, error_message)
             return
         
-        # 创建或获取会话 - 优先使用传入的会话ID，其次使用用户映射中的会话ID，最后生成新的
+        # 创建或获取会话 - 如果没有传入会话ID，则创建一个新的会话
         if not conversation_id:
-            conversation_id = user_conversations.get(user_id) or uuid4().hex
+            conversation_id = uuid4().hex
+            logger.info(f"未提供会话ID，为用户 {user_id} 创建新会话: {conversation_id}")
         
         # 更新用户会话映射
         user_conversations[user_id] = conversation_id

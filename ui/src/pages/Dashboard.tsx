@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import { logout } from "../store/slices/authSlice";
 import { AgentPanel } from "../components/agent-panel";
@@ -9,6 +9,54 @@ import type { Agent, AgentEvent, GuardrailCheck, Message } from "../lib/types";
 import { createWebSocketService, getWebSocketService, type WebSocketConnectionStatus } from "../lib/websocket";
 import { Bot, MessageCircle, Wifi, WifiOff, RefreshCw, AlertTriangle, LogOut, User } from "lucide-react";
 import { Button } from "../components/ui/button";
+
+// 会话持久化相关常量
+const STORAGE_KEYS = {
+  CURRENT_CONVERSATION_ID: 'current_conversation_id',
+} as const;
+
+// 会话持久化工具函数
+const ConversationPersistence = {
+  // 保存当前会话ID
+  saveCurrentConversationId: (conversationId: string | null) => {
+    try {
+      if (conversationId) {
+        localStorage.setItem(STORAGE_KEYS.CURRENT_CONVERSATION_ID, conversationId);
+        console.log('💾 会话ID已保存到localStorage:', conversationId);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_CONVERSATION_ID);
+        console.log('🗑️ 会话ID已从localStorage移除');
+      }
+    } catch (error) {
+      console.error('保存会话ID失败:', error);
+    }
+  },
+
+  // 恢复当前会话ID
+  restoreCurrentConversationId: (): string | null => {
+    try {
+      const conversationId = localStorage.getItem(STORAGE_KEYS.CURRENT_CONVERSATION_ID);
+      if (conversationId) {
+        console.log('🔄 从localStorage恢复会话ID:', conversationId);
+        return conversationId;
+      }
+      return null;
+    } catch (error) {
+      console.error('恢复会话ID失败:', error);
+      return null;
+    }
+  },
+
+  // 清除所有持久化数据
+  clearAll: () => {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_CONVERSATION_ID);
+      console.log('🧹 清除所有会话持久化数据');
+    } catch (error) {
+      console.error('清除会话数据失败:', error);
+    }
+  },
+};
 
 const Dashboard: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -21,12 +69,83 @@ const Dashboard: React.FC = () => {
   const [guardrails, setGuardrails] = useState<GuardrailCheck[]>([]);
   const [context, setContext] = useState<Record<string, any>>({});
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [isRestoringSession, setIsRestoringSession] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   // 移除不必要的对话消息缓存（简化状态管理）
   const [activeTab, setActiveTab] = useState<'agent' | 'customer'>('agent');
   const [wsStatus, setWsStatus] = useState<WebSocketConnectionStatus>('disconnected');
   const [streamingResponse, setStreamingResponse] = useState<string>('');
   const [wsError, setWsError] = useState<string>('');
+  const [conversationListKey, setConversationListKey] = useState(0);
+
+  // 会话恢复逻辑 - 在组件初始化时尝试从localStorage恢复会话
+  useEffect(() => {
+    if (!user || !token) {
+      return;
+    }
+
+    console.log('🔄 开始尝试恢复会话...');
+    setIsRestoringSession(true);
+    
+    const savedConversationId = ConversationPersistence.restoreCurrentConversationId();
+    
+    if (savedConversationId) {
+      console.log('🔄 恢复保存的会话ID:', savedConversationId);
+      setConversationId(savedConversationId);
+      
+      // 自动加载该会话的历史消息
+      loadConversationHistory(savedConversationId);
+    } else {
+      console.log('📝 没有找到保存的会话ID，使用默认状态');
+      setIsRestoringSession(false);
+    }
+  }, [user, token]);
+
+  // 加载会话历史消息的函数
+  const loadConversationHistory = async (conversationId: string) => {
+    try {
+      console.log('📜 开始加载会话历史消息:', conversationId);
+      setIsLoading(true);
+      
+      // 动态导入 messageAPI
+      const { messageAPI } = await import('../services/apiService');
+      
+      // 获取历史消息
+      const response = await messageAPI.getMessages(conversationId, 50, 0);
+      
+      if (response.success && response.data) {
+        // 转换消息格式
+        const historyMessages: Message[] = response.data.map((msg: any) => ({
+          id: msg.id.toString(),
+          content: msg.content,
+          type: (msg.sender_type === 'human' ? 'user' : 'ai') as 'user' | 'ai' | 'system',
+          agent: msg.sender_type === 'human' ? 'user' : (msg.sender_id || 'ai'),
+          timestamp: new Date(msg.created_at || Date.now()),
+        }));
+        
+        // 按时间正序排序（最老的在前面）
+        historyMessages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        
+        // 设置消息
+        setMessages(historyMessages);
+        
+        console.log('✅ 成功恢复会话历史消息:', historyMessages.length, '条');
+      } else {
+        console.warn('⚠️ 无法获取会话历史消息:', response.message);
+        // 如果无法获取历史消息，清除保存的会话ID
+        ConversationPersistence.saveCurrentConversationId(null);
+        setConversationId(null);
+      }
+    } catch (error) {
+      console.error('❌ 加载会话历史消息失败:', error);
+      // 如果加载失败，清除保存的会话ID
+      ConversationPersistence.saveCurrentConversationId(null);
+      setConversationId(null);
+    } finally {
+      setIsLoading(false);
+      setIsRestoringSession(false);
+    }
+  };
 
   // 设置WebSocket事件监听器
   useEffect(() => {
@@ -49,8 +168,8 @@ const Dashboard: React.FC = () => {
     // 确保user_id是字符串格式
     const userId = typeof user.user_id === 'string' ? user.user_id : String(user.user_id);
     
-    // 使用认证用户信息创建WebSocket连接
-    const wsService = createWebSocketService(userId, user.username, undefined, token);
+    // 使用认证用户信息创建WebSocket连接，如果有恢复的会话ID则使用它
+    const wsService = createWebSocketService(userId, user.username, conversationId || undefined, token);
     
     if (wsService) {
       // 监听连接状态
@@ -100,6 +219,8 @@ const Dashboard: React.FC = () => {
         const newConversationId = content.conversation_id;
         if (newConversationId) {
           setConversationId(newConversationId);
+          // 保存会话ID到localStorage
+          ConversationPersistence.saveCurrentConversationId(newConversationId);
         }
       };
       
@@ -173,8 +294,17 @@ const Dashboard: React.FC = () => {
           }
           
           // 实时更新会话ID和当前代理
-          if (content.conversation_id) {
+          if (content.conversation_id && !conversationId) {
+            console.log('🌟 收到新的会话ID (来自流式响应):', content.conversation_id);
             setConversationId(content.conversation_id);
+            const wsService = getWebSocketService();
+            if (wsService) {
+              wsService.setConversationId(content.conversation_id);
+            }
+            // 保存新的会话ID到localStorage
+            ConversationPersistence.saveCurrentConversationId(content.conversation_id);
+            // 触发会话列表刷新
+            setConversationListKey(prev => prev + 1);
           }
           
           // 确保实时更新当前代理，包括agent切换
@@ -208,8 +338,17 @@ const Dashboard: React.FC = () => {
         console.log('💬 Dashboard 收到聊天响应:', response);
         
         try {
-          if (response.conversation_id) {
+          if (response.conversation_id && !conversationId) {
+            console.log('🌟 收到新的会话ID (来自最终响应):', response.conversation_id);
             setConversationId(response.conversation_id);
+            const wsService = getWebSocketService();
+            if (wsService) {
+              wsService.setConversationId(response.conversation_id);
+            }
+            // 保存新的会话ID到localStorage
+            ConversationPersistence.saveCurrentConversationId(response.conversation_id);
+            // 触发会话列表刷新
+            setConversationListKey(prev => prev + 1);
           }
           
           if (response.current_agent) {
@@ -337,15 +476,44 @@ const Dashboard: React.FC = () => {
       console.error('❌ 无法创建WebSocket服务');
       setWsStatus('error');
     }
-  }, [user, token]);
+  }, [user, token, conversationId]);
 
   // 其他业务逻辑方法
   const handleSelectConversation = async (selectedConversationId: string) => {
     console.log('🔄 选择会话:', selectedConversationId);
+    
+    const wsService = getWebSocketService();
+
+    // 如果是新会话
+    if (selectedConversationId === 'new') {
+      setConversationId(null);
+      setMessages([]);
+      // 可能还需要重置其他与会话相关的状态
+      setEvents([]);
+      setGuardrails([]);
+      setContext({});
+      setCurrentAgent("");
+      setIsLoading(false);
+      setStreamingResponse('');
+      
+      // 重置WebSocket服务中的会话ID
+      if (wsService) {
+        wsService.setConversationId(null);
+      }
+      
+      // 清除localStorage中的会话ID
+      ConversationPersistence.saveCurrentConversationId(null);
+      
+      return;
+    }
+    
+    // 如果是现有会话
     setConversationId(selectedConversationId);
     
+    // 保存会话ID到localStorage
+    ConversationPersistence.saveCurrentConversationId(selectedConversationId);
+    
     // 获取或创建WebSocket服务
-    const wsService = getWebSocketService();
     if (wsService) {
       // 通过WebSocket发送会话切换消息（不再重新连接）
       if (wsService.status === 'connected') {
@@ -437,6 +605,8 @@ const Dashboard: React.FC = () => {
   };
 
   const handleLogout = () => {
+    // 清除会话持久化数据
+    ConversationPersistence.clearAll();
     dispatch(logout());
   };
 
@@ -566,11 +736,12 @@ const Dashboard: React.FC = () => {
                <Chat
                  messages={messages}
                  onSendMessage={handleSendMessage}
-                 isLoading={isLoading}
+                 isLoading={isLoading || isRestoringSession}
                  streamingResponse={streamingResponse}
                  wsStatus={wsStatus}
                  conversationId={conversationId}
                  onSelectConversation={handleSelectConversation}
+                 conversationListKey={conversationListKey}
                />
              </div>
           </div>
@@ -619,11 +790,12 @@ const Dashboard: React.FC = () => {
                  <Chat
                    messages={messages}
                    onSendMessage={handleSendMessage}
-                   isLoading={isLoading}
+                   isLoading={isLoading || isRestoringSession}
                    streamingResponse={streamingResponse}
                    wsStatus={wsStatus}
                    conversationId={conversationId}
                    onSelectConversation={handleSelectConversation}
+                   conversationListKey={conversationListKey}
                  />
                )}
              </div>
