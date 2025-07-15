@@ -62,18 +62,177 @@ class NoteListResponse(BaseModel):
 
 
 class NoteSearchResponse(BaseModel):
-    """笔记搜索响应模型"""
+    """搜索笔记响应模型"""
     success: bool
     message: str
     data: Optional[List[Dict[str, Any]]] = None
-    search_query: str
     total: int = 0
     user_id: int
+    query: Optional[str] = None
+    search_type: Optional[str] = None
+
+
+class NoteSearchRequest(BaseModel):
+    """搜索笔记请求模型"""
+    query: str = Field(..., min_length=1, description="搜索查询")
+    use_vector_search: bool = Field(default=True, description="是否使用向量搜索")
+    tag: Optional[str] = Field(default=None, description="标签过滤")
+    status: Optional[str] = Field(default=None, description="状态过滤")
+    limit: Optional[int] = Field(default=10, ge=1, le=50, description="返回数量限制")
 
 
 # =========================
-# API端点
+# API端点 - 按照路由具体性排序
 # =========================
+
+@note_router.post("/{user_id}/search")
+async def search_notes(
+    user_id: int = Path(..., description="用户ID"),
+    request: NoteSearchRequest = Body(..., description="搜索笔记请求"),
+    current_user: Dict[str, Any] = CurrentUser
+):
+    """
+    搜索笔记（支持向量搜索）
+    
+    Args:
+        user_id: 用户ID
+        request: 搜索笔记请求
+        current_user: 当前认证用户
+        
+    Returns:
+        搜索笔记响应
+    """
+    try:
+        # 验证用户只能搜索自己的笔记
+        if str(user_id) != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="无权搜索其他用户的笔记")
+        
+        # 使用服务管理器获取笔记服务
+        note_service = service_manager.get_service(
+            'note_service',
+            NoteService
+        )
+        
+        search_results = []
+        
+        # 向量搜索（如果有查询词）
+        if request.query and request.use_vector_search:
+            try:
+                vector_results = note_service.search_notes_by_vector(
+                    user_id=user_id,
+                    query=request.query,
+                    limit=request.limit or 10
+                )
+                
+                # 转换向量搜索结果
+                for result in vector_results:
+                    search_results.append({
+                        "id": result.get("id"),
+                        "user_id": user_id,
+                        "title": result.get("title", ""),
+                        "content": result.get("content", ""),
+                        "tag": result.get("tag", ""),
+                        "status": result.get("status", "draft"),
+                        "created_at": result.get("created_at", ""),
+                        "updated_at": result.get("updated_at", ""),
+                        "last_updated": result.get("last_updated", ""),
+                        "similarity_score": result.get("similarity_score", 0.0),
+                        "search_type": "vector"
+                    })
+                    
+            except Exception as e:
+                logger.warning(f"向量搜索失败，回退到文本搜索: {e}")
+                # 回退到普通搜索
+                request.use_vector_search = False
+        
+        # 普通文本搜索（如果没有向量搜索或作为回退）
+        if not request.use_vector_search and request.query:
+            notes = note_service.search_notes(
+                user_id=user_id,
+                query=request.query,
+                search_in_content=True,
+                search_in_tags=True,
+                tag=request.tag,
+                status=request.status,
+                limit=request.limit or 20
+            )
+            
+            # 转换普通搜索结果
+            for note in notes:
+                search_results.append({
+                    "id": note.id,
+                    "user_id": note.user_id,
+                    "title": note.title,
+                    "content": note.content,
+                    "tag": note.tag,
+                    "status": note.status,
+                    "created_at": note.created_at.isoformat() if note.created_at else None,
+                    "updated_at": note.updated_at.isoformat() if note.updated_at else None,
+                    "last_updated": note.last_updated.isoformat() if note.last_updated else None,
+                    "similarity_score": 1.0,  # 文本搜索没有相似度分数
+                    "search_type": "text"
+                })
+        
+        return NoteSearchResponse(
+            success=True,
+            message=f"搜索完成，找到 {len(search_results)} 条结果",
+            data=search_results,
+            total=len(search_results),
+            user_id=user_id,
+            query=request.query,
+            search_type="vector" if request.use_vector_search else "text"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"搜索笔记失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"搜索笔记失败: {str(e)}")
+
+
+@note_router.get("/{user_id}/tags")
+async def get_user_note_tags(
+    user_id: int = Path(..., description="用户ID"),
+    current_user: Dict[str, Any] = CurrentUser
+):
+    """
+    获取用户的所有笔记标签
+    
+    Args:
+        user_id: 用户ID
+        current_user: 当前认证用户
+        
+    Returns:
+        标签列表响应
+    """
+    try:
+        # 验证用户只能访问自己的笔记标签
+        if str(user_id) != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="无权访问其他用户的笔记标签")
+        
+        # 使用服务管理器获取笔记服务
+        note_service = service_manager.get_service(
+            'note_service',
+            NoteService
+        )
+        
+        # 获取标签列表
+        tags = note_service.get_user_tags(user_id)
+        
+        return {
+            "success": True,
+            "message": f"成功获取用户 {user_id} 的笔记标签",
+            "data": tags,
+            "total": len(tags),
+            "user_id": user_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取用户笔记标签失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取笔记标签失败: {str(e)}")
+
 
 @note_router.post("/{user_id}")
 async def create_note(
@@ -320,19 +479,14 @@ async def update_note(
         if note.user_id != user_id:
             raise HTTPException(status_code=403, detail="无权更新此笔记")
         
-        # 准备更新数据
-        update_data = {}
-        if request.title is not None:
-            update_data['title'] = request.title
-        if request.content is not None:
-            update_data['content'] = request.content
-        if request.tag is not None:
-            update_data['tag'] = request.tag
-        if request.status is not None:
-            update_data['status'] = request.status
-        
         # 更新笔记
-        updated_note = note_service.update_note(note_id, **update_data)
+        updated_note = note_service.update_note(
+            note_id=note_id,
+            title=request.title,
+            content=request.content,
+            tag=request.tag,
+            status=request.status
+        )
         
         if not updated_note:
             raise HTTPException(status_code=400, detail="更新笔记失败")
@@ -415,122 +569,4 @@ async def delete_note(
         raise
     except Exception as e:
         logger.error(f"删除笔记失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"删除笔记失败: {str(e)}")
-
-
-@note_router.post("/{user_id}/search")
-async def search_notes(
-    user_id: int = Path(..., description="用户ID"),
-    search_query: str = Body(..., embed=True, description="搜索查询"),
-    tag: Optional[str] = Query(None, description="标签过滤"),
-    status: Optional[str] = Query(None, description="状态过滤"),
-    limit: int = Query(10, ge=1, le=50, description="返回数量限制"),
-    current_user: Dict[str, Any] = CurrentUser
-):
-    """
-    搜索笔记（向量搜索）
-    
-    Args:
-        user_id: 用户ID
-        search_query: 搜索查询
-        tag: 标签过滤
-        status: 状态过滤
-        limit: 返回数量限制
-        current_user: 当前认证用户
-        
-    Returns:
-        搜索结果响应
-    """
-    try:
-        # 验证用户只能搜索自己的笔记
-        if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权搜索其他用户的笔记")
-        
-        # 使用服务管理器获取笔记服务
-        note_service = service_manager.get_service(
-            'note_service',
-            NoteService
-        )
-        
-        # 搜索笔记
-        results = note_service.search_notes(
-            user_id=user_id,
-            query=search_query,
-            tag=tag,
-            status=status,
-            limit=limit
-        )
-        
-        # 转换为响应格式
-        notes_data = []
-        for result in results:
-            note_data = {
-                "id": result.get("id"),
-                "user_id": result.get("user_id"),
-                "title": result.get("title"),
-                "content": result.get("content"),
-                "tag": result.get("tag"),
-                "status": result.get("status"),
-                "created_at": result.get("created_at"),
-                "updated_at": result.get("updated_at"),
-                "last_updated": result.get("last_updated"),
-                "similarity_score": result.get("similarity_score", 0.0)
-            }
-            notes_data.append(note_data)
-        
-        return NoteSearchResponse(
-            success=True,
-            message=f"成功搜索用户 {user_id} 的笔记",
-            data=notes_data,
-            search_query=search_query,
-            total=len(notes_data),
-            user_id=user_id
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"搜索笔记失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"搜索笔记失败: {str(e)}")
-
-
-@note_router.get("/{user_id}/tags")
-async def get_note_tags(
-    user_id: int = Path(..., description="用户ID"),
-    current_user: Dict[str, Any] = CurrentUser
-):
-    """
-    获取用户笔记的所有标签
-    
-    Args:
-        user_id: 用户ID
-        current_user: 当前认证用户
-        
-    Returns:
-        标签列表响应
-    """
-    try:
-        # 验证用户只能访问自己的笔记标签
-        if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权访问其他用户的笔记标签")
-        
-        # 使用服务管理器获取笔记服务
-        note_service = service_manager.get_service(
-            'note_service',
-            NoteService
-        )
-        
-        # 获取用户笔记标签
-        tags = note_service.get_user_tags(user_id)
-        
-        return NoteResponse(
-            success=True,
-            message=f"成功获取用户 {user_id} 的笔记标签",
-            data={"tags": tags}
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取笔记标签失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取笔记标签失败: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"删除笔记失败: {str(e)}") 

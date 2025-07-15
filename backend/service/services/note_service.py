@@ -196,6 +196,7 @@ class NoteService:
             return None
     
     def get_user_notes(self, user_id: int, status: Optional[str] = None, 
+                      tag: Optional[str] = None, search_query: Optional[str] = None,
                       limit: int = 50, offset: int = 0) -> List[Note]:
         """
         获取用户的笔记列表
@@ -203,6 +204,8 @@ class NoteService:
         Args:
             user_id: 用户ID
             status: 笔记状态筛选
+            tag: 标签筛选
+            search_query: 搜索关键词
             limit: 限制数量
             offset: 偏移量
             
@@ -215,6 +218,18 @@ class NoteService:
                 
                 if status:
                     query = query.filter(Note.status == status)
+                    
+                if tag:
+                    query = query.filter(Note.tag == tag)
+                    
+                if search_query:
+                    search_term = f"%{search_query}%"
+                    query = query.filter(
+                        or_(
+                            Note.title.like(search_term),
+                            Note.content.like(search_term)
+                        )
+                    )
                 
                 notes = query.order_by(Note.last_updated.desc()).offset(offset).limit(limit).all()
                 return notes
@@ -305,7 +320,8 @@ class NoteService:
             return False
     
     def search_notes(self, user_id: int, query: str, search_in_content: bool = True,
-                    search_in_tags: bool = True, limit: int = 20) -> List[Note]:
+                    search_in_tags: bool = True, tag: Optional[str] = None, 
+                    status: Optional[str] = None, limit: int = 20) -> List[Note]:
         """
         搜索笔记
         
@@ -340,6 +356,14 @@ class NoteService:
                 # 组合搜索条件
                 if search_conditions:
                     conditions.append(or_(*search_conditions))
+                
+                # 添加标签过滤
+                if tag:
+                    conditions.append(Note.tag == tag)
+                
+                # 添加状态过滤
+                if status:
+                    conditions.append(Note.status == status)
                 
                 notes = session.query(Note).filter(and_(*conditions)).order_by(
                     Note.last_updated.desc()

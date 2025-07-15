@@ -49,9 +49,10 @@ export function NotesPanel({ userId }: NotesPanelProps) {
         search: filter.search,
         limit: 50
       });
-      setNotes(response.data);
+      setNotes(response.data || []);
     } catch (error) {
       console.error('加载笔记失败:', error);
+      setNotes([]); // 出错时设置为空数组
     } finally {
       setLoading(false);
     }
@@ -61,9 +62,10 @@ export function NotesPanel({ userId }: NotesPanelProps) {
   const loadTags = async () => {
     try {
       const response = await NoteService.getNoteTags(userId);
-      setAvailableTags(response.data.tags);
+      setAvailableTags(response.data?.tags || []);
     } catch (error) {
       console.error('加载标签失败:', error);
+      setAvailableTags([]); // 出错时设置为空数组
     }
   };
 
@@ -82,10 +84,11 @@ export function NotesPanel({ userId }: NotesPanelProps) {
         status: filter.status,
         limit: 20
       });
-      setNotes(response.data);
+      setNotes(response.data || []);
       setShowSearchResults(true);
     } catch (error) {
       console.error('搜索笔记失败:', error);
+      setNotes([]); // 出错时设置为空数组
     } finally {
       setLoading(false);
     }
@@ -238,7 +241,7 @@ export function NotesPanel({ userId }: NotesPanelProps) {
             className="px-3 py-1 border rounded text-sm"
           >
             <option value="">所有标签</option>
-            {availableTags.map(tag => (
+            {(availableTags || []).map(tag => (
               <option key={tag} value={tag}>{tag}</option>
             ))}
           </select>
@@ -268,7 +271,7 @@ export function NotesPanel({ userId }: NotesPanelProps) {
           </div>
         ) : (
           <div className="p-4 space-y-3">
-            {notes.map((note) => (
+            {(notes || []).map((note) => (
               <Card key={note.id} className="p-4 hover:shadow-md transition-shadow">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">

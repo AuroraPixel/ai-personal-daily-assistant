@@ -73,8 +73,270 @@ class TodoStatsResponse(BaseModel):
 
 
 # =========================
-# API端点
+# API端点 - 按照路由具体性排序
 # =========================
+
+@todo_router.get("/{user_id}/stats")
+async def get_todo_stats(
+    user_id: int = Path(..., description="用户ID"),
+    current_user: Dict[str, Any] = CurrentUser
+):
+    """
+    获取用户待办事项统计信息
+    
+    Args:
+        user_id: 用户ID
+        current_user: 当前认证用户
+        
+    Returns:
+        待办事项统计响应
+    """
+    try:
+        # 验证用户只能访问自己的待办事项统计
+        if str(user_id) != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="无权访问其他用户的待办事项统计")
+        
+        # 使用服务管理器获取待办事项服务
+        todo_service = service_manager.get_service(
+            'todo_service',
+            TodoService
+        )
+        
+        # 获取统计信息
+        stats = todo_service.get_user_stats(user_id)
+        
+        return TodoStatsResponse(
+            success=True,
+            message=f"成功获取用户 {user_id} 的待办事项统计",
+            data=stats,
+            user_id=user_id
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取待办事项统计失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取待办事项统计失败: {str(e)}")
+
+
+@todo_router.get("/{user_id}/by-note/{note_id}")
+async def get_todos_by_note(
+    user_id: int = Path(..., description="用户ID"),
+    note_id: int = Path(..., description="笔记ID"),
+    current_user: Dict[str, Any] = CurrentUser
+):
+    """
+    获取关联到特定笔记的待办事项
+    
+    Args:
+        user_id: 用户ID
+        note_id: 笔记ID
+        current_user: 当前认证用户
+        
+    Returns:
+        关联笔记的待办事项列表响应
+    """
+    try:
+        # 验证用户只能访问自己的待办事项
+        if str(user_id) != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="无权访问其他用户的待办事项")
+        
+        # 使用服务管理器获取待办事项服务
+        todo_service = service_manager.get_service(
+            'todo_service',
+            TodoService
+        )
+        
+        # 获取关联笔记的待办事项
+        todos = todo_service.get_todos_by_note(user_id, note_id)
+        
+        # 转换为响应格式
+        todos_data = []
+        for todo in todos:
+            todo_data = {
+                "id": todo.id,
+                "user_id": todo.user_id,
+                "title": todo.title,
+                "description": todo.description,
+                "completed": todo.completed,
+                "priority": todo.priority,
+                "note_id": todo.note_id,
+                "due_date": todo.due_date.isoformat() if todo.due_date else None,
+                "completed_at": todo.completed_at.isoformat() if todo.completed_at else None,
+                "created_at": todo.created_at.isoformat() if todo.created_at else None,
+                "updated_at": todo.updated_at.isoformat() if todo.updated_at else None,
+                "last_updated": todo.last_updated.isoformat() if todo.last_updated else None,
+                "is_overdue": todo.is_overdue(),
+                "status_display": todo.get_status_display()
+            }
+            todos_data.append(todo_data)
+        
+        return TodoListResponse(
+            success=True,
+            message=f"成功获取笔记 {note_id} 关联的待办事项",
+            data=todos_data,
+            total=len(todos_data),
+            user_id=user_id
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取关联笔记的待办事项失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取关联笔记的待办事项失败: {str(e)}")
+
+
+@todo_router.post("/{user_id}/{todo_id}/complete")
+async def complete_todo(
+    user_id: int = Path(..., description="用户ID"),
+    todo_id: int = Path(..., description="待办事项ID"),
+    current_user: Dict[str, Any] = CurrentUser
+):
+    """
+    标记待办事项为完成
+    
+    Args:
+        user_id: 用户ID
+        todo_id: 待办事项ID
+        current_user: 当前认证用户
+        
+    Returns:
+        完成待办事项响应
+    """
+    try:
+        # 验证用户只能完成自己的待办事项
+        if str(user_id) != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="无权完成其他用户的待办事项")
+        
+        # 使用服务管理器获取待办事项服务
+        todo_service = service_manager.get_service(
+            'todo_service',
+            TodoService
+        )
+        
+        # 先获取待办事项验证存在性和权限
+        todo = todo_service.get_todo(todo_id)
+        if not todo:
+            raise HTTPException(status_code=404, detail="待办事项不存在")
+        
+        if todo.user_id != user_id:
+            raise HTTPException(status_code=403, detail="无权完成此待办事项")
+        
+        # 标记为完成
+        success = todo_service.complete_todo(todo_id)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="完成待办事项失败")
+        
+        # 获取更新后的待办事项
+        updated_todo = todo_service.get_todo(todo_id)
+        
+        # 转换为响应格式
+        todo_data = {
+            "id": updated_todo.id,
+            "user_id": updated_todo.user_id,
+            "title": updated_todo.title,
+            "description": updated_todo.description,
+            "completed": updated_todo.completed,
+            "priority": updated_todo.priority,
+            "note_id": updated_todo.note_id,
+            "due_date": updated_todo.due_date.isoformat() if updated_todo.due_date else None,
+            "completed_at": updated_todo.completed_at.isoformat() if updated_todo.completed_at else None,
+            "created_at": updated_todo.created_at.isoformat() if updated_todo.created_at else None,
+            "updated_at": updated_todo.updated_at.isoformat() if updated_todo.updated_at else None,
+            "last_updated": updated_todo.last_updated.isoformat() if updated_todo.last_updated else None,
+            "is_overdue": updated_todo.is_overdue(),
+            "status_display": updated_todo.get_status_display()
+        }
+        
+        return TodoResponse(
+            success=True,
+            message="待办事项已标记为完成",
+            data=todo_data
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"完成待办事项失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"完成待办事项失败: {str(e)}")
+
+
+@todo_router.post("/{user_id}/{todo_id}/uncomplete")
+async def uncomplete_todo(
+    user_id: int = Path(..., description="用户ID"),
+    todo_id: int = Path(..., description="待办事项ID"),
+    current_user: Dict[str, Any] = CurrentUser
+):
+    """
+    取消待办事项完成状态
+    
+    Args:
+        user_id: 用户ID
+        todo_id: 待办事项ID
+        current_user: 当前认证用户
+        
+    Returns:
+        取消完成待办事项响应
+    """
+    try:
+        # 验证用户只能操作自己的待办事项
+        if str(user_id) != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="无权操作其他用户的待办事项")
+        
+        # 使用服务管理器获取待办事项服务
+        todo_service = service_manager.get_service(
+            'todo_service',
+            TodoService
+        )
+        
+        # 先获取待办事项验证存在性和权限
+        todo = todo_service.get_todo(todo_id)
+        if not todo:
+            raise HTTPException(status_code=404, detail="待办事项不存在")
+        
+        if todo.user_id != user_id:
+            raise HTTPException(status_code=403, detail="无权操作此待办事项")
+        
+        # 取消完成状态
+        success = todo_service.uncomplete_todo(todo_id)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="取消完成状态失败")
+        
+        # 获取更新后的待办事项
+        updated_todo = todo_service.get_todo(todo_id)
+        
+        # 转换为响应格式
+        todo_data = {
+            "id": updated_todo.id,
+            "user_id": updated_todo.user_id,
+            "title": updated_todo.title,
+            "description": updated_todo.description,
+            "completed": updated_todo.completed,
+            "priority": updated_todo.priority,
+            "note_id": updated_todo.note_id,
+            "due_date": updated_todo.due_date.isoformat() if updated_todo.due_date else None,
+            "completed_at": updated_todo.completed_at.isoformat() if updated_todo.completed_at else None,
+            "created_at": updated_todo.created_at.isoformat() if updated_todo.created_at else None,
+            "updated_at": updated_todo.updated_at.isoformat() if updated_todo.updated_at else None,
+            "last_updated": updated_todo.last_updated.isoformat() if updated_todo.last_updated else None,
+            "is_overdue": updated_todo.is_overdue(),
+            "status_display": updated_todo.get_status_display()
+        }
+        
+        return TodoResponse(
+            success=True,
+            message="待办事项完成状态已取消",
+            data=todo_data
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"取消待办事项完成状态失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"取消待办事项完成状态失败: {str(e)}")
+
 
 @todo_router.post("/{user_id}")
 async def create_todo(
@@ -364,14 +626,15 @@ async def update_todo(
             update_data['due_date'] = request.due_date
         if request.note_id is not None:
             update_data['note_id'] = request.note_id
-        if request.completed is not None:
-            update_data['completed'] = request.completed
         
         # 更新待办事项
-        updated_todo = todo_service.update_todo(todo_id, **update_data)
+        success = todo_service.update_todo(todo_id, **update_data)
         
-        if not updated_todo:
+        if not success:
             raise HTTPException(status_code=400, detail="更新待办事项失败")
+        
+        # 获取更新后的待办事项
+        updated_todo = todo_service.get_todo(todo_id)
         
         # 转换为响应格式
         todo_data = {
@@ -456,266 +719,4 @@ async def delete_todo(
         raise
     except Exception as e:
         logger.error(f"删除待办事项失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"删除待办事项失败: {str(e)}")
-
-
-@todo_router.post("/{user_id}/{todo_id}/complete")
-async def complete_todo(
-    user_id: int = Path(..., description="用户ID"),
-    todo_id: int = Path(..., description="待办事项ID"),
-    current_user: Dict[str, Any] = CurrentUser
-):
-    """
-    标记待办事项为完成
-    
-    Args:
-        user_id: 用户ID
-        todo_id: 待办事项ID
-        current_user: 当前认证用户
-        
-    Returns:
-        完成待办事项响应
-    """
-    try:
-        # 验证用户只能完成自己的待办事项
-        if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权完成其他用户的待办事项")
-        
-        # 使用服务管理器获取待办事项服务
-        todo_service = service_manager.get_service(
-            'todo_service',
-            TodoService
-        )
-        
-        # 先获取待办事项验证存在性和权限
-        todo = todo_service.get_todo(todo_id)
-        if not todo:
-            raise HTTPException(status_code=404, detail="待办事项不存在")
-        
-        if todo.user_id != user_id:
-            raise HTTPException(status_code=403, detail="无权完成此待办事项")
-        
-        # 标记为完成
-        success = todo_service.complete_todo(todo_id)
-        
-        if not success:
-            raise HTTPException(status_code=400, detail="完成待办事项失败")
-        
-        # 获取更新后的待办事项
-        updated_todo = todo_service.get_todo(todo_id)
-        
-        # 转换为响应格式
-        todo_data = {
-            "id": updated_todo.id,
-            "user_id": updated_todo.user_id,
-            "title": updated_todo.title,
-            "description": updated_todo.description,
-            "completed": updated_todo.completed,
-            "priority": updated_todo.priority,
-            "note_id": updated_todo.note_id,
-            "due_date": updated_todo.due_date.isoformat() if updated_todo.due_date else None,
-            "completed_at": updated_todo.completed_at.isoformat() if updated_todo.completed_at else None,
-            "created_at": updated_todo.created_at.isoformat() if updated_todo.created_at else None,
-            "updated_at": updated_todo.updated_at.isoformat() if updated_todo.updated_at else None,
-            "last_updated": updated_todo.last_updated.isoformat() if updated_todo.last_updated else None,
-            "is_overdue": updated_todo.is_overdue(),
-            "status_display": updated_todo.get_status_display()
-        }
-        
-        return TodoResponse(
-            success=True,
-            message="待办事项标记为完成",
-            data=todo_data
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"完成待办事项失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"完成待办事项失败: {str(e)}")
-
-
-@todo_router.post("/{user_id}/{todo_id}/uncomplete")
-async def uncomplete_todo(
-    user_id: int = Path(..., description="用户ID"),
-    todo_id: int = Path(..., description="待办事项ID"),
-    current_user: Dict[str, Any] = CurrentUser
-):
-    """
-    取消完成待办事项
-    
-    Args:
-        user_id: 用户ID
-        todo_id: 待办事项ID
-        current_user: 当前认证用户
-        
-    Returns:
-        取消完成待办事项响应
-    """
-    try:
-        # 验证用户只能取消完成自己的待办事项
-        if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权取消完成其他用户的待办事项")
-        
-        # 使用服务管理器获取待办事项服务
-        todo_service = service_manager.get_service(
-            'todo_service',
-            TodoService
-        )
-        
-        # 先获取待办事项验证存在性和权限
-        todo = todo_service.get_todo(todo_id)
-        if not todo:
-            raise HTTPException(status_code=404, detail="待办事项不存在")
-        
-        if todo.user_id != user_id:
-            raise HTTPException(status_code=403, detail="无权取消完成此待办事项")
-        
-        # 取消完成
-        success = todo_service.uncomplete_todo(todo_id)
-        
-        if not success:
-            raise HTTPException(status_code=400, detail="取消完成待办事项失败")
-        
-        # 获取更新后的待办事项
-        updated_todo = todo_service.get_todo(todo_id)
-        
-        # 转换为响应格式
-        todo_data = {
-            "id": updated_todo.id,
-            "user_id": updated_todo.user_id,
-            "title": updated_todo.title,
-            "description": updated_todo.description,
-            "completed": updated_todo.completed,
-            "priority": updated_todo.priority,
-            "note_id": updated_todo.note_id,
-            "due_date": updated_todo.due_date.isoformat() if updated_todo.due_date else None,
-            "completed_at": updated_todo.completed_at.isoformat() if updated_todo.completed_at else None,
-            "created_at": updated_todo.created_at.isoformat() if updated_todo.created_at else None,
-            "updated_at": updated_todo.updated_at.isoformat() if updated_todo.updated_at else None,
-            "last_updated": updated_todo.last_updated.isoformat() if updated_todo.last_updated else None,
-            "is_overdue": updated_todo.is_overdue(),
-            "status_display": updated_todo.get_status_display()
-        }
-        
-        return TodoResponse(
-            success=True,
-            message="待办事项取消完成",
-            data=todo_data
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"取消完成待办事项失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"取消完成待办事项失败: {str(e)}")
-
-
-@todo_router.get("/{user_id}/stats")
-async def get_todo_stats(
-    user_id: int = Path(..., description="用户ID"),
-    current_user: Dict[str, Any] = CurrentUser
-):
-    """
-    获取用户待办事项统计信息
-    
-    Args:
-        user_id: 用户ID
-        current_user: 当前认证用户
-        
-    Returns:
-        待办事项统计响应
-    """
-    try:
-        # 验证用户只能访问自己的待办事项统计
-        if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权访问其他用户的待办事项统计")
-        
-        # 使用服务管理器获取待办事项服务
-        todo_service = service_manager.get_service(
-            'todo_service',
-            TodoService
-        )
-        
-        # 获取统计信息
-        stats = todo_service.get_user_stats(user_id)
-        
-        return TodoStatsResponse(
-            success=True,
-            message=f"成功获取用户 {user_id} 的待办事项统计",
-            data=stats,
-            user_id=user_id
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取待办事项统计失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取待办事项统计失败: {str(e)}")
-
-
-@todo_router.get("/{user_id}/by-note/{note_id}")
-async def get_todos_by_note(
-    user_id: int = Path(..., description="用户ID"),
-    note_id: int = Path(..., description="笔记ID"),
-    current_user: Dict[str, Any] = CurrentUser
-):
-    """
-    获取关联到特定笔记的待办事项
-    
-    Args:
-        user_id: 用户ID
-        note_id: 笔记ID
-        current_user: 当前认证用户
-        
-    Returns:
-        关联笔记的待办事项列表响应
-    """
-    try:
-        # 验证用户只能访问自己的待办事项
-        if str(user_id) != current_user["user_id"]:
-            raise HTTPException(status_code=403, detail="无权访问其他用户的待办事项")
-        
-        # 使用服务管理器获取待办事项服务
-        todo_service = service_manager.get_service(
-            'todo_service',
-            TodoService
-        )
-        
-        # 获取关联笔记的待办事项
-        todos = todo_service.get_todos_by_note(user_id, note_id)
-        
-        # 转换为响应格式
-        todos_data = []
-        for todo in todos:
-            todo_data = {
-                "id": todo.id,
-                "user_id": todo.user_id,
-                "title": todo.title,
-                "description": todo.description,
-                "completed": todo.completed,
-                "priority": todo.priority,
-                "note_id": todo.note_id,
-                "due_date": todo.due_date.isoformat() if todo.due_date else None,
-                "completed_at": todo.completed_at.isoformat() if todo.completed_at else None,
-                "created_at": todo.created_at.isoformat() if todo.created_at else None,
-                "updated_at": todo.updated_at.isoformat() if todo.updated_at else None,
-                "last_updated": todo.last_updated.isoformat() if todo.last_updated else None,
-                "is_overdue": todo.is_overdue(),
-                "status_display": todo.get_status_display()
-            }
-            todos_data.append(todo_data)
-        
-        return TodoListResponse(
-            success=True,
-            message=f"成功获取笔记 {note_id} 关联的待办事项",
-            data=todos_data,
-            total=len(todos_data),
-            user_id=user_id
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取关联笔记的待办事项失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取关联笔记的待办事项失败: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"删除待办事项失败: {str(e)}") 
