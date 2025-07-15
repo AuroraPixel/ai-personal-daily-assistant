@@ -268,6 +268,13 @@ class PersonalAssistantManager:
                 self.agents['personal'],
             ]
         )
+
+        # 会话标题智能体
+        self.agents['conversation_title'] = Agent(
+            name="Conversation Title Agent",
+            model=self.model,
+            instructions="You are a conversation title generator. Based on the user's chat history, summarize what the user wants to do and provide a title within 10 characters. ",
+        )
         
         print("✅ 所有智能体创建完成")
     
@@ -478,6 +485,10 @@ class PersonalAssistantManager:
     def get_personal_agent(self) -> Agent[PersonalAssistantContext]:
         """获取个人助手智能体"""
         return self.get_agent('personal')
+    
+    def get_conversation_title_agent(self) -> Agent[PersonalAssistantContext]:
+        """获取会话标题智能体"""
+        return self.get_agent('conversation_title')
     
     @property
     def is_initialized(self) -> bool:

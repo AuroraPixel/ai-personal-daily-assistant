@@ -303,6 +303,14 @@ async def _process_stream_with_concurrent_handling(
             }
             
             await session_manager.save(conversation_id, final_state)
+
+            # 根据用户聊天记录，生成会话标题
+            print(f"--------更新会话标题: {input_items}")
+            conversation_title_agent = _get_agent_by_name("Conversation Title Agent")
+            if len(input_items) > 1 and len(input_items) < 5:
+                title_result = await Runner.run(conversation_title_agent, input=input_items)
+                await session_manager.update_conversation_title(conversation_id, title_result.final_output)
+
             logger.info(f"✅ 用户 {user_id} 流式处理完成")
             
         except Exception as stream_error:
@@ -360,6 +368,7 @@ async def _process_stream_with_concurrent_handling(
                     logger.debug(f"✅ 用户 {user_id} 并发任务已清理")
                 except Exception as final_cleanup_error:
                     logger.error(f"❌ 用户 {user_id} 最终清理失败: {final_cleanup_error}")
+                   
                 
     except Exception as e:
         logger.error(f"❌ 用户 {user_id} 并发流式处理失败: {e}")
