@@ -21,9 +21,18 @@ interface NotesPanelProps {
   userId: number;
 }
 
+// 预定义的标签选项
+const PREDEFINED_TAGS = [
+  { value: 'lifestyle tips', label: '生活小贴士' },
+  { value: 'cooking advice', label: '烹饪建议' },
+  { value: 'weather interpretation', label: '天气解读' },
+  { value: 'news context', label: '新闻背景' }
+];
+
 export function NotesPanel({ userId }: NotesPanelProps) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(false);
+  const [operationLoading, setOperationLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -97,15 +106,24 @@ export function NotesPanel({ userId }: NotesPanelProps) {
   // 创建笔记
   const createNote = async () => {
     try {
+      setOperationLoading(true);
       const response = await NoteService.createNote(userId, formData);
       if (response.success) {
+        // 关闭创建窗口
         setShowCreateForm(false);
+        // 重置表单
         setFormData({ title: '', content: '', tag: '', status: 'draft' });
-        loadNotes();
-        loadTags();
+        // 刷新数据
+        await Promise.all([loadNotes(), loadTags()]);
+        // 成功提示
+        console.log('笔记创建成功');
+      } else {
+        console.error('创建笔记失败:', response.message || '未知错误');
       }
     } catch (error) {
       console.error('创建笔记失败:', error);
+    } finally {
+      setOperationLoading(false);
     }
   };
 
@@ -114,6 +132,7 @@ export function NotesPanel({ userId }: NotesPanelProps) {
     if (!editingNote) return;
 
     try {
+      setOperationLoading(true);
       const updateData: NoteUpdateRequest = {
         title: formData.title,
         content: formData.content,
@@ -123,13 +142,22 @@ export function NotesPanel({ userId }: NotesPanelProps) {
       
       const response = await NoteService.updateNote(userId, editingNote.id, updateData);
       if (response.success) {
+        // 关闭编辑窗口
         setEditingNote(null);
+        setShowCreateForm(false);
+        // 重置表单
         setFormData({ title: '', content: '', tag: '', status: 'draft' });
-        loadNotes();
-        loadTags();
+        // 刷新数据
+        await Promise.all([loadNotes(), loadTags()]);
+        // 成功提示
+        console.log('笔记更新成功');
+      } else {
+        console.error('更新笔记失败:', response.message || '未知错误');
       }
     } catch (error) {
       console.error('更新笔记失败:', error);
+    } finally {
+      setOperationLoading(false);
     }
   };
 
@@ -138,12 +166,20 @@ export function NotesPanel({ userId }: NotesPanelProps) {
     if (!confirm('确定要删除这个笔记吗？')) return;
 
     try {
+      setOperationLoading(true);
       const response = await NoteService.deleteNote(userId, noteId);
       if (response.success) {
-        loadNotes();
+        // 刷新数据
+        await Promise.all([loadNotes(), loadTags()]);
+        // 成功提示
+        console.log('笔记删除成功');
+      } else {
+        console.error('删除笔记失败:', response.message || '未知错误');
       }
     } catch (error) {
       console.error('删除笔记失败:', error);
+    } finally {
+      setOperationLoading(false);
     }
   };
 
@@ -164,6 +200,12 @@ export function NotesPanel({ userId }: NotesPanelProps) {
     setEditingNote(null);
     setShowCreateForm(false);
     setFormData({ title: '', content: '', tag: '', status: 'draft' });
+  };
+
+  // 获取标签显示名称
+  const getTagLabel = (tagValue: string) => {
+    const tag = PREDEFINED_TAGS.find(t => t.value === tagValue);
+    return tag ? tag.label : tagValue;
   };
 
   // 格式化日期
@@ -190,8 +232,9 @@ export function NotesPanel({ userId }: NotesPanelProps) {
 
   // 组件挂载时加载数据
   useEffect(() => {
-    loadNotes();
-    loadTags();
+    Promise.all([loadNotes(), loadTags()]).catch(error => {
+      console.error('初始化数据加载失败:', error);
+    });
   }, [userId, filter]);
 
   return (
@@ -204,7 +247,8 @@ export function NotesPanel({ userId }: NotesPanelProps) {
         </h2>
         <Button 
           onClick={() => setShowCreateForm(true)}
-          className="bg-blue-500 hover:bg-blue-600"
+          disabled={operationLoading}
+          className="bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
           size="sm"
         >
           <Plus className="w-4 h-4 mr-1" />
@@ -241,7 +285,10 @@ export function NotesPanel({ userId }: NotesPanelProps) {
             className="px-3 py-1 border rounded text-sm"
           >
             <option value="">所有标签</option>
-            {(availableTags || []).map(tag => (
+            {PREDEFINED_TAGS.map(tag => (
+              <option key={tag.value} value={tag.value}>{tag.label}</option>
+            ))}
+            {(availableTags || []).filter(tag => !PREDEFINED_TAGS.some(pt => pt.value === tag)).map(tag => (
               <option key={tag} value={tag}>{tag}</option>
             ))}
           </select>
@@ -281,7 +328,7 @@ export function NotesPanel({ userId }: NotesPanelProps) {
                       {note.tag && (
                         <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
                           <Tag className="w-3 h-3" />
-                          {note.tag}
+                          {getTagLabel(note.tag)}
                         </span>
                       )}
                       <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(note.status)}`}>
@@ -295,7 +342,8 @@ export function NotesPanel({ userId }: NotesPanelProps) {
                       variant="outline"
                       size="sm"
                       onClick={() => startEdit(note)}
-                      className="p-1 h-8 w-8"
+                      disabled={operationLoading}
+                      className="p-1 h-8 w-8 disabled:opacity-50"
                     >
                       <Edit3 className="w-4 h-4" />
                     </Button>
@@ -303,7 +351,8 @@ export function NotesPanel({ userId }: NotesPanelProps) {
                       variant="outline"
                       size="sm"
                       onClick={() => deleteNote(note.id)}
-                      className="p-1 h-8 w-8 text-red-500 hover:text-red-700"
+                      disabled={operationLoading}
+                      className="p-1 h-8 w-8 text-red-500 hover:text-red-700 disabled:opacity-50"
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -365,13 +414,16 @@ export function NotesPanel({ userId }: NotesPanelProps) {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     标签
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.tag}
                     onChange={(e) => setFormData({ ...formData, tag: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="标签"
-                  />
+                  >
+                    <option value="">请选择标签</option>
+                    {PREDEFINED_TAGS.map(tag => (
+                      <option key={tag.value} value={tag.value}>{tag.label}</option>
+                    ))}
+                  </select>
                 </div>
                 
                 <div className="flex-1">
@@ -395,16 +447,24 @@ export function NotesPanel({ userId }: NotesPanelProps) {
               <Button
                 variant="outline"
                 onClick={cancelEdit}
+                disabled={operationLoading}
               >
                 取消
               </Button>
               <Button
                 onClick={editingNote ? updateNote : createNote}
                 className="bg-blue-500 hover:bg-blue-600"
-                disabled={!formData.title.trim()}
+                disabled={!formData.title.trim() || operationLoading}
               >
-                <Save className="w-4 h-4 mr-1" />
-                {editingNote ? '更新' : '创建'}
+                {operationLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
+                ) : (
+                  <Save className="w-4 h-4 mr-1" />
+                )}
+                {operationLoading 
+                  ? (editingNote ? '更新中...' : '创建中...') 
+                  : (editingNote ? '更新' : '创建')
+                }
               </Button>
             </div>
           </div>

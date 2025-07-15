@@ -27,6 +27,7 @@ export function TodosPanel({ userId }: TodosPanelProps) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [operationLoading, setOperationLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [filter, setFilter] = useState<PersonDataFilter>({});
@@ -51,9 +52,10 @@ export function TodosPanel({ userId }: TodosPanelProps) {
         overdue: filter.overdue,
         limit: 50
       });
-      setTodos(response.data);
+      setTodos(response.data || []);
     } catch (error) {
       console.error('加载待办事项失败:', error);
+      setTodos([]); // 出错时设置为空数组
     } finally {
       setLoading(false);
     }
@@ -72,6 +74,7 @@ export function TodosPanel({ userId }: TodosPanelProps) {
   // 创建待办事项
   const createTodo = async () => {
     try {
+      setOperationLoading(true);
       const createData = {
         ...formData,
         due_date: formData.due_date ? new Date(formData.due_date).toISOString() : undefined
@@ -79,13 +82,21 @@ export function TodosPanel({ userId }: TodosPanelProps) {
       
       const response = await TodoService.createTodo(userId, createData);
       if (response.success) {
+        // 关闭创建窗口
         setShowCreateForm(false);
+        // 重置表单
         setFormData({ title: '', description: '', priority: 'medium', due_date: undefined, note_id: undefined });
-        loadTodos();
-        loadStats();
+        // 刷新数据
+        await Promise.all([loadTodos(), loadStats()]);
+        // 成功提示
+        console.log('待办事项创建成功');
+      } else {
+        console.error('创建待办事项失败:', response.message || '未知错误');
       }
     } catch (error) {
       console.error('创建待办事项失败:', error);
+    } finally {
+      setOperationLoading(false);
     }
   };
 
@@ -94,6 +105,7 @@ export function TodosPanel({ userId }: TodosPanelProps) {
     if (!editingTodo) return;
 
     try {
+      setOperationLoading(true);
       const updateData: TodoUpdateRequest = {
         title: formData.title,
         description: formData.description,
@@ -104,13 +116,22 @@ export function TodosPanel({ userId }: TodosPanelProps) {
       
       const response = await TodoService.updateTodo(userId, editingTodo.id, updateData);
       if (response.success) {
+        // 关闭编辑窗口
         setEditingTodo(null);
+        setShowCreateForm(false);
+        // 重置表单
         setFormData({ title: '', description: '', priority: 'medium', due_date: undefined, note_id: undefined });
-        loadTodos();
-        loadStats();
+        // 刷新数据
+        await Promise.all([loadTodos(), loadStats()]);
+        // 成功提示
+        console.log('待办事项更新成功');
+      } else {
+        console.error('更新待办事项失败:', response.message || '未知错误');
       }
     } catch (error) {
       console.error('更新待办事项失败:', error);
+    } finally {
+      setOperationLoading(false);
     }
   };
 
@@ -119,28 +140,38 @@ export function TodosPanel({ userId }: TodosPanelProps) {
     if (!confirm('确定要删除这个待办事项吗？')) return;
 
     try {
+      setOperationLoading(true);
       const response = await TodoService.deleteTodo(userId, todoId);
       if (response.success) {
-        loadTodos();
-        loadStats();
+        // 刷新数据
+        await Promise.all([loadTodos(), loadStats()]);
+        // 成功提示
+        console.log('待办事项删除成功');
+      } else {
+        console.error('删除待办事项失败:', response.message || '未知错误');
       }
     } catch (error) {
       console.error('删除待办事项失败:', error);
+    } finally {
+      setOperationLoading(false);
     }
   };
 
   // 切换完成状态
   const toggleComplete = async (todo: Todo) => {
     try {
+      setOperationLoading(true);
       if (todo.completed) {
         await TodoService.uncompleteTodo(userId, todo.id);
       } else {
         await TodoService.completeTodo(userId, todo.id);
       }
-      loadTodos();
-      loadStats();
+      // 刷新数据
+      await Promise.all([loadTodos(), loadStats()]);
     } catch (error) {
       console.error('切换完成状态失败:', error);
+    } finally {
+      setOperationLoading(false);
     }
   };
 
@@ -206,8 +237,9 @@ export function TodosPanel({ userId }: TodosPanelProps) {
 
   // 组件挂载时加载数据
   useEffect(() => {
-    loadTodos();
-    loadStats();
+    Promise.all([loadTodos(), loadStats()]).catch(error => {
+      console.error('初始化数据加载失败:', error);
+    });
   }, [userId, filter]);
 
   return (
@@ -223,14 +255,16 @@ export function TodosPanel({ userId }: TodosPanelProps) {
             variant="outline"
             size="sm"
             onClick={() => setShowStats(!showStats)}
-            className="flex items-center gap-1"
+            disabled={operationLoading}
+            className="flex items-center gap-1 disabled:opacity-50"
           >
             <BarChart3 className="w-4 h-4" />
             统计
           </Button>
           <Button 
             onClick={() => setShowCreateForm(true)}
-            className="bg-green-500 hover:bg-green-600"
+            disabled={operationLoading}
+            className="bg-green-500 hover:bg-green-600 disabled:opacity-50"
             size="sm"
           >
             <Plus className="w-4 h-4 mr-1" />
@@ -324,7 +358,8 @@ export function TodosPanel({ userId }: TodosPanelProps) {
                 <div className="flex items-start gap-3">
                   <button
                     onClick={() => toggleComplete(todo)}
-                    className="mt-1 flex-shrink-0"
+                    disabled={operationLoading}
+                    className="mt-1 flex-shrink-0 disabled:opacity-50"
                   >
                     {todo.completed ? (
                       <CheckCircle className="w-5 h-5 text-green-500" />
@@ -378,7 +413,8 @@ export function TodosPanel({ userId }: TodosPanelProps) {
                       variant="outline"
                       size="sm"
                       onClick={() => startEdit(todo)}
-                      className="p-1 h-8 w-8"
+                      disabled={operationLoading}
+                      className="p-1 h-8 w-8 disabled:opacity-50"
                     >
                       <Edit3 className="w-4 h-4" />
                     </Button>
@@ -386,7 +422,8 @@ export function TodosPanel({ userId }: TodosPanelProps) {
                       variant="outline"
                       size="sm"
                       onClick={() => deleteTodo(todo.id)}
-                      className="p-1 h-8 w-8 text-red-500 hover:text-red-700"
+                      disabled={operationLoading}
+                      className="p-1 h-8 w-8 text-red-500 hover:text-red-700 disabled:opacity-50"
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -477,16 +514,24 @@ export function TodosPanel({ userId }: TodosPanelProps) {
               <Button
                 variant="outline"
                 onClick={cancelEdit}
+                disabled={operationLoading}
               >
                 取消
               </Button>
               <Button
                 onClick={editingTodo ? updateTodo : createTodo}
                 className="bg-green-500 hover:bg-green-600"
-                disabled={!formData.title.trim()}
+                disabled={!formData.title.trim() || operationLoading}
               >
-                <Save className="w-4 h-4 mr-1" />
-                {editingTodo ? '更新' : '创建'}
+                {operationLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
+                ) : (
+                  <Save className="w-4 h-4 mr-1" />
+                )}
+                {operationLoading 
+                  ? (editingTodo ? '更新中...' : '创建中...') 
+                  : (editingTodo ? '更新' : '创建')
+                }
               </Button>
             </div>
           </div>
