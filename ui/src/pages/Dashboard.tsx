@@ -3,11 +3,12 @@ import { useAppDispatch, useAppSelector } from "../store/hooks";
 import { logout } from "../store/slices/authSlice";
 import { AgentPanel } from "../components/agent-panel";
 import { Chat } from "../components/Chat";
+import { PersonDataPanel } from "../components/person-data-panel";
 
 import ErrorBoundary from "../components/ErrorBoundary";
 import type { Agent, AgentEvent, GuardrailCheck, Message } from "../lib/types";
 import { createWebSocketService, getWebSocketService, type WebSocketConnectionStatus } from "../lib/websocket";
-import { Bot, MessageCircle, Wifi, WifiOff, RefreshCw, AlertTriangle, LogOut, User } from "lucide-react";
+import { Bot, MessageCircle, Wifi, WifiOff, RefreshCw, AlertTriangle, LogOut, User, Database } from "lucide-react";
 import { Button } from "../components/ui/button";
 
 // 会话持久化相关常量
@@ -72,7 +73,7 @@ const Dashboard: React.FC = () => {
   const [isRestoringSession, setIsRestoringSession] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   // 移除不必要的对话消息缓存（简化状态管理）
-  const [activeTab, setActiveTab] = useState<'agent' | 'customer'>('agent');
+  const [activeTab, setActiveTab] = useState<'agent' | 'person' | 'customer'>('agent');
   const [wsStatus, setWsStatus] = useState<WebSocketConnectionStatus>('disconnected');
   const [streamingResponse, setStreamingResponse] = useState<string>('');
   const [wsError, setWsError] = useState<string>('');
@@ -733,21 +734,26 @@ const Dashboard: React.FC = () => {
 
         {/* 主要内容区域 */}
         <div className="flex-1 flex overflow-hidden">
-          {/* 桌面端布局 */}
+          {/* 桌面端布局 - 三栏布局 (3:4:3) */}
           <div className="hidden md:flex flex-1 gap-4 p-4">
-                                      {/* 左侧面板 - Agent View (40%) */}
-             <div className="w-2/5 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-sm flex flex-col">
-               <AgentPanel
-                 agents={agents}
-                 currentAgent={currentAgent}
-                 events={events}
-                 guardrails={guardrails}
-                 context={context}
-               />
-             </div>
+            {/* 左侧面板 - Agent View (30%) */}
+            <div className="w-[30%] bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-sm flex flex-col">
+              <AgentPanel
+                agents={agents}
+                currentAgent={currentAgent}
+                events={events}
+                guardrails={guardrails}
+                context={context}
+              />
+            </div>
 
-             {/* 右侧聊天区域 - Assistant View (60%) */}
-             <div className="w-3/5 flex flex-col bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-sm">
+            {/* 中间面板 - Person Data (40%) */}
+            <div className="w-2/5 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-sm flex flex-col">
+              <PersonDataPanel userId={parseInt(user?.user_id || "1")} />
+            </div>
+
+                         {/* 右侧聊天区域 - Assistant View (30%) */}
+             <div className="w-[30%] flex flex-col bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-sm">
                <Chat
                  messages={messages}
                  onSendMessage={handleSendMessage}
@@ -765,7 +771,7 @@ const Dashboard: React.FC = () => {
           <div className="md:hidden flex-1 flex flex-col">
             {/* 移动端内容 - 撑满屏幕，无边框 */}
             <div className="flex-1 overflow-hidden bg-gray-50">
-              {activeTab === 'agent' ? (
+              {activeTab === 'agent' && (
                 <AgentPanel
                   agents={agents}
                   currentAgent={currentAgent}
@@ -773,7 +779,11 @@ const Dashboard: React.FC = () => {
                   guardrails={guardrails}
                   context={context}
                 />
-              ) : (
+              )}
+              {activeTab === 'person' && (
+                <PersonDataPanel userId={parseInt(user?.user_id || "1")} />
+              )}
+              {activeTab === 'customer' && (
                 <Chat
                   messages={messages}
                   onSendMessage={handleSendMessage}
@@ -792,25 +802,36 @@ const Dashboard: React.FC = () => {
               <div className="flex">
                 <button
                   onClick={() => setActiveTab('agent')}
-                  className={`flex-1 py-3 px-4 text-sm font-medium transition-all duration-200 ${
+                  className={`flex-1 py-3 px-2 text-sm font-medium transition-all duration-200 ${
                     activeTab === 'agent'
                       ? 'bg-primary text-white shadow-sm'
                       : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200/50'
                   }`}
                 >
                   <Bot className="w-5 h-5 mx-auto mb-1" />
-                  <span className="block">智能体</span>
+                  <span className="block text-xs">智能体</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('person')}
+                  className={`flex-1 py-3 px-2 text-sm font-medium transition-all duration-200 ${
+                    activeTab === 'person'
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200/50'
+                  }`}
+                >
+                  <Database className="w-5 h-5 mx-auto mb-1" />
+                  <span className="block text-xs">个人数据</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('customer')}
-                  className={`flex-1 py-3 px-4 text-sm font-medium transition-all duration-200 ${
+                  className={`flex-1 py-3 px-2 text-sm font-medium transition-all duration-200 ${
                     activeTab === 'customer'
                       ? 'bg-primary text-white shadow-sm'
                       : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200/50'
                   }`}
                 >
                   <MessageCircle className="w-5 h-5 mx-auto mb-1" />
-                  <span className="block">聊天</span>
+                  <span className="block text-xs">聊天</span>
                 </button>
               </div>
             </div>

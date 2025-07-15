@@ -23,7 +23,9 @@ from api import (
     admin_router,
     conversation_router,
     websocket_router,
-    system_router
+    system_router,
+    note_router,
+    todo_router
 )
 
 # 导入WebSocket核心模块
@@ -276,6 +278,12 @@ app.include_router(admin_router, prefix="/api")
 
 # 会话路由器
 app.include_router(conversation_router, prefix="/api")
+
+# 笔记路由器
+app.include_router(note_router, prefix="/api")
+
+# 待办事项路由器
+app.include_router(todo_router, prefix="/api")
 
 # WebSocket路由器（包含所有WebSocket相关端点）
 app.include_router(websocket_router)
