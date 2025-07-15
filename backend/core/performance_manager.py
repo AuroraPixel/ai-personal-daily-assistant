@@ -252,6 +252,7 @@ class PerformanceManager:
             "News Agent": assistant_manager.get_news_agent,
             "Recipe Agent": assistant_manager.get_recipe_agent,
             "Personal Assistant Agent": assistant_manager.get_personal_agent,
+            "Conversation Title Agent": assistant_manager.get_conversation_title_agent,
         }
         
         if agent_name in agent_mapping:

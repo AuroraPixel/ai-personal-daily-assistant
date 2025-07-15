@@ -109,6 +109,9 @@ celerybeat.pid
 
 # 环境变量文件 (Environments)
 .env
+.env.*
+.env_*
+*.env
 .venv
 env/
 venv/

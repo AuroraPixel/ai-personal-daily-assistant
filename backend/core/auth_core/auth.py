@@ -195,7 +195,7 @@ class AuthUtils:
             user_service = UserService()
             
             # 尝试通过用户名查找用户
-            users = user_service.search_users_by_name(username)
+            users = user_service.search_users_by_username(username)
             if not users:
                 # 如果按名称找不到，尝试按邮箱查找
                 users = user_service.search_users_by_email(username)

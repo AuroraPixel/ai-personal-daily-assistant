@@ -24,12 +24,21 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         timeout: 10000
-      },
-      '/chat': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        secure: false,
-        timeout: 10000
+      }
+    }
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    minify: true,
+    target: 'es2015',
+    chunkSizeWarningLimit: 2000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom']
+        }
       }
     }
   }

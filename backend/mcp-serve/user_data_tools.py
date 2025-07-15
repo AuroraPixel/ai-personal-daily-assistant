@@ -319,8 +319,8 @@ def register_user_data_tools(mcp: FastMCP):
                         "content": note.content,
                         "tag": note.tag,
                         "status": note.status,
-                        "created_at": note.created_at.isoformat() if note.created_at else None,
-                        "last_updated": note.last_updated.isoformat() if note.last_updated else None
+                        "created_at": note.created_at.isoformat() if note.created_at is not None else None,
+                        "last_updated": note.last_updated.isoformat() if note.last_updated is not None else None
                     }
                 }, ensure_ascii=False)
             return json.dumps({"error": "Failed to create note"}, ensure_ascii=False)
@@ -342,16 +342,13 @@ def register_user_data_tools(mcp: FastMCP):
             JSON string containing list of notes and metadata
         """
         try:
-            if user_id < 1 or user_id > 10:
-                return json.dumps({"error": "User ID must be between 1 and 10"}, ensure_ascii=False)
-            
             if note_service is None:
                 return json.dumps({"error": "Note service not initialized"}, ensure_ascii=False)
             
             # Convert empty status to None for service call
             status_filter = status if status else None
             
-            notes = note_service.get_user_notes(user_id, status_filter, limit, offset)
+            notes = note_service.get_user_notes(user_id, status_filter, None, None, limit, offset)
             notes_data = []
             
             for note in notes:
@@ -362,8 +359,8 @@ def register_user_data_tools(mcp: FastMCP):
                     "content": note.content,
                     "tag": note.tag,
                     "status": note.status,
-                    "created_at": note.created_at.isoformat() if note.created_at else None,
-                    "last_updated": note.last_updated.isoformat() if note.last_updated else None
+                    "created_at": note.created_at.isoformat() if note.created_at is not None else None,
+                    "last_updated": note.last_updated.isoformat() if note.last_updated is not None else None
                 })
             
             return json.dumps({
@@ -397,7 +394,7 @@ def register_user_data_tools(mcp: FastMCP):
             if note_service is None:
                 return json.dumps({"error": "Note service not initialized"}, ensure_ascii=False)
             
-            notes = note_service.search_notes(user_id, query, limit)
+            notes = note_service.search_notes(user_id, query, True, True, None, None, limit)
             notes_data = []
             
             for note in notes:
@@ -408,8 +405,8 @@ def register_user_data_tools(mcp: FastMCP):
                     "content": note.content,
                     "tag": note.tag,
                     "status": note.status,
-                    "created_at": note.created_at.isoformat() if note.created_at else None,
-                    "last_updated": note.last_updated.isoformat() if note.last_updated else None
+                    "created_at": note.created_at.isoformat() if note.created_at is not None else None,
+                    "last_updated": note.last_updated.isoformat() if note.last_updated is not None else None
                 })
             
             return json.dumps({
@@ -602,10 +599,10 @@ def register_user_data_tools(mcp: FastMCP):
                     "completed": todo.completed,
                     "priority": todo.priority,
                     "note_id": todo.note_id,
-                    "due_date": todo.due_date.isoformat() if todo.due_date else None,
-                    "completed_at": todo.completed_at.isoformat() if todo.completed_at else None,
-                    "created_at": todo.created_at.isoformat() if todo.created_at else None,
-                    "last_updated": todo.last_updated.isoformat() if todo.last_updated else None
+                    "due_date": todo.due_date.isoformat() if todo.due_date is not None else None,
+                    "completed_at": todo.completed_at.isoformat() if todo.completed_at is not None else None,
+                    "created_at": todo.created_at.isoformat() if todo.created_at is not None else None,
+                    "last_updated": todo.last_updated.isoformat() if todo.last_updated is not None else None
                 })
             
             return json.dumps({

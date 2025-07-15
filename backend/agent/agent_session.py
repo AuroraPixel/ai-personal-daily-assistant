@@ -563,6 +563,28 @@ class AgentSessionManager:
         except Exception as e:
             print(f"保存会话状态失败: {e}")
             return False
+
+    async def update_conversation_title(self, conversation_id: str, title: str) -> bool:
+        """
+        更新会话标题
+        
+        Args:
+            conversation_id: 会话ID
+            title: 新标题
+            
+        Returns:
+            更新是否成功
+        """
+        try:
+            session = await self.get_session(conversation_id)
+            if session is None:
+                return False
+            
+            return await session.update_conversation_title(title)
+            
+        except Exception as e:
+            print(f"更新会话标题失败: {e}")
+            return False
     
     async def create_conversation(self, conversation_id: str, title: str = "New Conversation") -> bool:
         """
@@ -773,6 +795,19 @@ class SyncAgentSessionManager:
             创建是否成功
         """
         return self._run_async(self.async_manager.create_conversation(conversation_id, title))
+    
+    def update_conversation_title(self, conversation_id: str, title: str) -> bool:
+        """
+        更新会话标题（同步版本）
+        
+        Args:
+            conversation_id: 会话ID
+            title: 新标题
+            
+        Returns:
+            更新是否成功
+        """
+        return self._run_async(self.async_manager.update_conversation_title(conversation_id, title))
     
     def get_conversation_info(self, conversation_id: str) -> Optional[Dict[str, Any]]:
         """

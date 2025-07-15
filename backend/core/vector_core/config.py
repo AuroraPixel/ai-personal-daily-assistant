@@ -32,9 +32,11 @@ class VectorConfig(BaseModel):
     @classmethod
     def from_env(cls) -> "VectorConfig":
         """Load configuration from environment variables"""
-        openai_api_key = os.getenv("OPENAI_API_KEY")
+        openai_api_key = os.getenv("EMBEDDING_OPENAI_API_KEY")
         if not openai_api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required")
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise ValueError("OPENAI_API_KEY or EMBEDDING_OPENAI_API_KEY environment variable is required")
         
         return cls(
             openai_api_key=openai_api_key,

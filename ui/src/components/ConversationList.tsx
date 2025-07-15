@@ -22,6 +22,7 @@ interface ConversationListProps {
   onSelectConversation: (conversationId: string) => void;
   currentConversationId: string | null;
   userId: number;
+  refreshKey?: number;
 }
 
 export function ConversationList({ 
@@ -29,7 +30,8 @@ export function ConversationList({
   onClose, 
   onSelectConversation, 
   currentConversationId,
-  userId 
+  userId,
+  refreshKey
 }: ConversationListProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -72,12 +74,13 @@ export function ConversationList({
     }
   };
 
-  // 初始加载
+  // 初始加载和根据refreshKey刷新
   useEffect(() => {
-    if (isOpen && conversations.length === 0) {
+    if (isOpen) {
+      console.log('会话列表刷新，原因: key 变更或初始加载');
       fetchConversations(true);
     }
-  }, [isOpen, userId]);
+  }, [isOpen, userId, refreshKey]);
 
   // 加载更多
   const loadMore = () => {

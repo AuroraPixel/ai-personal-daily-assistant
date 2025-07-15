@@ -5,6 +5,7 @@
 """
 
 import logging
+from datetime import datetime
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
@@ -35,6 +36,49 @@ async def root():
         "connections": await connection_manager.get_active_connections_count(),
         "rooms": await connection_manager.get_room_count()
     }
+
+@system_router.get("/health")
+async def health_check():
+    """健康检查端点"""
+    try:
+        # 检查数据库连接
+        db_status = "healthy"
+        try:
+            db_client = service_manager.get_db_client()
+            if not db_client:
+                db_status = "unhealthy"
+        except Exception:
+            db_status = "unhealthy"
+        
+        # 检查向量数据库连接
+        vector_status = "healthy"
+        try:
+            vector_client = service_manager.get_vector_client()
+            if not vector_client:
+                vector_status = "not_configured"
+            else:
+                health = vector_client.health_check()
+                if health.get('status') != 'healthy':
+                    vector_status = "unhealthy"
+        except Exception:
+            vector_status = "unhealthy"
+        
+        overall_status = "healthy" if db_status == "healthy" else "degraded"
+        
+        return {
+            "status": overall_status,
+            "timestamp": datetime.now().isoformat(),
+            "services": {
+                "database": db_status,
+                "vector_database": vector_status,
+                "websocket": "healthy"
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
 
 
 @system_router.get("/test")

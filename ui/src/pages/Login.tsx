@@ -131,13 +131,14 @@ const Login: React.FC = () => {
                 />
                 <button
                   type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center z-10 focus:outline-none bg-gray-50/50 hover:bg-gray-200 rounded-r-lg transition-colors"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                    <EyeOff className="h-4 w-4 text-gray-500 hover:text-gray-700 transition-colors" />
                   ) : (
-                    <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                    <Eye className="h-4 w-4 text-gray-500 hover:text-gray-700 transition-colors" />
                   )}
                 </button>
               </div>
@@ -166,8 +167,9 @@ const Login: React.FC = () => {
           {/* 提示信息 */}
           <div className="mt-8 text-center">
             <div className="text-sm text-gray-600 space-y-1">
-              <p>测试账户：任意用户名</p>
-              <p>默认密码：admin123456</p>
+              <p className="font-medium text-blue-600">测试账户：<span className="font-mono">jsonplaceholder.typicode.com</span> 获取</p>
+              <p className="text-xs">默认密码：<span className="font-mono">admin123456</span></p>
+              <p className="text-xs text-gray-500">支持任意用户名登录</p>
             </div>
           </div>
         </div>

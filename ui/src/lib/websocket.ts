@@ -27,6 +27,8 @@ export interface ChatResponse {
   agents: Array<Record<string, any>>;
   raw_response: string;
   is_finished: boolean;
+  is_error: boolean;
+  error_message: string;
   guardrails: Array<{
     id: string;
     name: string;
@@ -79,6 +81,7 @@ export class WebSocketService {
   }
   
   setConversationId(conversationId: string | null) {
+    console.log('🔄 WebSocket设置会话ID:', this._conversationId, '->', conversationId);
     this._conversationId = conversationId || undefined;
   }
   

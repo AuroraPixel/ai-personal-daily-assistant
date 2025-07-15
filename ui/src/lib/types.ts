@@ -48,6 +48,142 @@ export interface Conversation {
   updated_at: string
 }
 
+// =========================
+// 笔记相关类型定义
+// =========================
+
+export interface Note {
+  id: number
+  user_id: number
+  title: string
+  content: string
+  tag: string | null
+  status: string
+  created_at: string | null
+  updated_at: string | null
+  last_updated: string | null
+  similarity_score?: number
+}
+
+export interface NoteCreateRequest {
+  title: string
+  content: string
+  tag?: string
+  status?: string
+}
+
+export interface NoteUpdateRequest {
+  title?: string
+  content?: string
+  tag?: string
+  status?: string
+}
+
+export interface NoteListResponse {
+  success: boolean
+  message: string
+  data: Note[]
+  total: number
+  user_id: number
+}
+
+export interface NoteResponse {
+  success: boolean
+  message: string
+  data: Note | null
+}
+
+export interface NoteSearchResponse {
+  success: boolean
+  message: string
+  data: Note[]
+  search_query: string
+  total: number
+  user_id: number
+}
+
+// =========================
+// 待办事项相关类型定义
+// =========================
+
+export interface Todo {
+  id: number
+  user_id: number
+  title: string
+  description: string
+  completed: boolean
+  priority: 'high' | 'medium' | 'low'
+  note_id: number | null
+  due_date: string | null
+  completed_at: string | null
+  created_at: string | null
+  updated_at: string | null
+  last_updated: string | null
+  is_overdue: boolean
+  status_display: string
+}
+
+export interface TodoCreateRequest {
+  title: string
+  description: string
+  priority: 'high' | 'medium' | 'low'
+  due_date?: string
+  note_id?: number
+}
+
+export interface TodoUpdateRequest {
+  title?: string
+  description?: string
+  priority?: 'high' | 'medium' | 'low'
+  due_date?: string
+  note_id?: number
+  completed?: boolean
+}
+
+export interface TodoListResponse {
+  success: boolean
+  message: string
+  data: Todo[]
+  total: number
+  user_id: number
+}
+
+export interface TodoResponse {
+  success: boolean
+  message: string
+  data: Todo | null
+}
+
+export interface TodoStatsResponse {
+  success: boolean
+  message: string
+  data: {
+    total: number
+    completed: number
+    pending: number
+    overdue: number
+    high_priority: number
+    medium_priority: number
+    low_priority: number
+  }
+  user_id: number
+}
+
+// =========================
+// Person Data 相关类型定义
+// =========================
+
+export type PersonDataTab = 'notes' | 'todos'
+
+export interface PersonDataFilter {
+  search?: string
+  tag?: string
+  status?: string
+  priority?: 'high' | 'medium' | 'low'
+  completed?: boolean
+  overdue?: boolean
+}
+
 export interface User {
   user_id: string
   username: string

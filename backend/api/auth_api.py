@@ -24,7 +24,7 @@ from core.auth_core import (
 logger = logging.getLogger(__name__)
 
 # 创建认证API路由器
-auth_router = APIRouter(prefix="/api/auth", tags=["认证"])
+auth_router = APIRouter(prefix="/auth", tags=["认证"])
 
 # =========================
 # 数据模型

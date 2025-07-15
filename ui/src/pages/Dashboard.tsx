@@ -1,14 +1,63 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import { logout } from "../store/slices/authSlice";
 import { AgentPanel } from "../components/agent-panel";
 import { Chat } from "../components/Chat";
+import { PersonDataPanel } from "../components/person-data-panel";
 
 import ErrorBoundary from "../components/ErrorBoundary";
 import type { Agent, AgentEvent, GuardrailCheck, Message } from "../lib/types";
 import { createWebSocketService, getWebSocketService, type WebSocketConnectionStatus } from "../lib/websocket";
-import { Bot, MessageCircle, Wifi, WifiOff, RefreshCw, AlertTriangle, LogOut, User } from "lucide-react";
+import { Bot, MessageCircle, Wifi, WifiOff, RefreshCw, AlertTriangle, LogOut, User, Database } from "lucide-react";
 import { Button } from "../components/ui/button";
+
+// 会话持久化相关常量
+const STORAGE_KEYS = {
+  CURRENT_CONVERSATION_ID: 'current_conversation_id',
+} as const;
+
+// 会话持久化工具函数
+const ConversationPersistence = {
+  // 保存当前会话ID
+  saveCurrentConversationId: (conversationId: string | null) => {
+    try {
+      if (conversationId) {
+        localStorage.setItem(STORAGE_KEYS.CURRENT_CONVERSATION_ID, conversationId);
+        console.log('💾 会话ID已保存到localStorage:', conversationId);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_CONVERSATION_ID);
+        console.log('🗑️ 会话ID已从localStorage移除');
+      }
+    } catch (error) {
+      console.error('保存会话ID失败:', error);
+    }
+  },
+
+  // 恢复当前会话ID
+  restoreCurrentConversationId: (): string | null => {
+    try {
+      const conversationId = localStorage.getItem(STORAGE_KEYS.CURRENT_CONVERSATION_ID);
+      if (conversationId) {
+        console.log('🔄 从localStorage恢复会话ID:', conversationId);
+        return conversationId;
+      }
+      return null;
+    } catch (error) {
+      console.error('恢复会话ID失败:', error);
+      return null;
+    }
+  },
+
+  // 清除所有持久化数据
+  clearAll: () => {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_CONVERSATION_ID);
+      console.log('🧹 清除所有会话持久化数据');
+    } catch (error) {
+      console.error('清除会话数据失败:', error);
+    }
+  },
+};
 
 const Dashboard: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -21,12 +70,83 @@ const Dashboard: React.FC = () => {
   const [guardrails, setGuardrails] = useState<GuardrailCheck[]>([]);
   const [context, setContext] = useState<Record<string, any>>({});
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [isRestoringSession, setIsRestoringSession] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   // 移除不必要的对话消息缓存（简化状态管理）
-  const [activeTab, setActiveTab] = useState<'agent' | 'customer'>('agent');
+  const [activeTab, setActiveTab] = useState<'agent' | 'person' | 'customer'>('agent');
   const [wsStatus, setWsStatus] = useState<WebSocketConnectionStatus>('disconnected');
   const [streamingResponse, setStreamingResponse] = useState<string>('');
   const [wsError, setWsError] = useState<string>('');
+  const [conversationListKey, setConversationListKey] = useState(0);
+
+  // 会话恢复逻辑 - 在组件初始化时尝试从localStorage恢复会话
+  useEffect(() => {
+    if (!user || !token) {
+      return;
+    }
+
+    console.log('🔄 开始尝试恢复会话...');
+    setIsRestoringSession(true);
+    
+    const savedConversationId = ConversationPersistence.restoreCurrentConversationId();
+    
+    if (savedConversationId) {
+      console.log('🔄 恢复保存的会话ID:', savedConversationId);
+      setConversationId(savedConversationId);
+      
+      // 自动加载该会话的历史消息
+      loadConversationHistory(savedConversationId);
+    } else {
+      console.log('📝 没有找到保存的会话ID，使用默认状态');
+      setIsRestoringSession(false);
+    }
+  }, [user, token]);
+
+  // 加载会话历史消息的函数
+  const loadConversationHistory = async (conversationId: string) => {
+    try {
+      console.log('📜 开始加载会话历史消息:', conversationId);
+      setIsLoading(true);
+      
+      // 动态导入 messageAPI
+      const { messageAPI } = await import('../services/apiService');
+      
+      // 获取历史消息
+      const response = await messageAPI.getMessages(conversationId, 50, 0);
+      
+      if (response.success && response.data) {
+        // 转换消息格式
+        const historyMessages: Message[] = response.data.map((msg: any) => ({
+          id: msg.id.toString(),
+          content: msg.content,
+          type: (msg.sender_type === 'human' ? 'user' : 'ai') as 'user' | 'ai' | 'system',
+          agent: msg.sender_type === 'human' ? 'user' : (msg.sender_id || 'ai'),
+          timestamp: new Date(msg.created_at || Date.now()),
+        }));
+        
+        // 按时间正序排序（最老的在前面）
+        historyMessages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        
+        // 设置消息
+        setMessages(historyMessages);
+        
+        console.log('✅ 成功恢复会话历史消息:', historyMessages.length, '条');
+      } else {
+        console.warn('⚠️ 无法获取会话历史消息:', response.message);
+        // 如果无法获取历史消息，清除保存的会话ID
+        ConversationPersistence.saveCurrentConversationId(null);
+        setConversationId(null);
+      }
+    } catch (error) {
+      console.error('❌ 加载会话历史消息失败:', error);
+      // 如果加载失败，清除保存的会话ID
+      ConversationPersistence.saveCurrentConversationId(null);
+      setConversationId(null);
+    } finally {
+      setIsLoading(false);
+      setIsRestoringSession(false);
+    }
+  };
 
   // 设置WebSocket事件监听器
   useEffect(() => {
@@ -49,10 +169,15 @@ const Dashboard: React.FC = () => {
     // 确保user_id是字符串格式
     const userId = typeof user.user_id === 'string' ? user.user_id : String(user.user_id);
     
-    // 使用认证用户信息创建WebSocket连接
+    // 使用认证用户信息创建WebSocket连接，不传递conversationId，后续通过setConversationId更新
     const wsService = createWebSocketService(userId, user.username, undefined, token);
     
     if (wsService) {
+      // 如果有恢复的会话ID，设置到WebSocket服务中
+      if (conversationId) {
+        console.log('🔄 设置恢复的会话ID到WebSocket服务:', conversationId);
+        wsService.setConversationId(conversationId);
+      }
       // 监听连接状态
       const handleStatus = (status: WebSocketConnectionStatus) => {
         console.log('📡 Dashboard 收到状态更新:', status);
@@ -100,6 +225,8 @@ const Dashboard: React.FC = () => {
         const newConversationId = content.conversation_id;
         if (newConversationId) {
           setConversationId(newConversationId);
+          // 保存会话ID到localStorage
+          ConversationPersistence.saveCurrentConversationId(newConversationId);
         }
       };
       
@@ -146,14 +273,45 @@ const Dashboard: React.FC = () => {
           // 流式响应更新 - 只更新流式响应文本，不更新消息列表
           console.log('🔄 流式响应更新:', content);
           
+          // 检查流式响应中是否包含错误
+          if (content.is_error) {
+            console.error('🔄 流式响应中包含错误:', content.error_message);
+            
+            // 创建错误消息并添加到消息列表
+            const errorMessage: Message = {
+              id: `error-${Date.now()}-${Math.random()}`,
+              content: `系统异常: ${content.error_message}`,
+              type: 'ai',
+              agent: content.current_agent || 'System',
+              timestamp: new Date(),
+            };
+            
+            setMessages(prev => [...prev, errorMessage]);
+            
+            // 重置状态
+            setStreamingResponse('');
+            setIsLoading(false);
+            return;
+          }
+          
           // 更新流式响应文本
           if (content.raw_response) {
             setStreamingResponse(content.raw_response);
           }
           
           // 实时更新会话ID和当前代理
-          if (content.conversation_id) {
+          if (content.conversation_id && !conversationId) {
+            console.log('🌟 收到新的会话ID (来自流式响应):', content.conversation_id);
             setConversationId(content.conversation_id);
+            const wsService = getWebSocketService();
+            if (wsService) {
+              console.log('🔄 更新WebSocket服务的会话ID:', content.conversation_id);
+              wsService.setConversationId(content.conversation_id);
+            }
+            // 保存新的会话ID到localStorage
+            ConversationPersistence.saveCurrentConversationId(content.conversation_id);
+            // 触发会话列表刷新
+            setConversationListKey(prev => prev + 1);
           }
           
           // 确保实时更新当前代理，包括agent切换
@@ -187,13 +345,44 @@ const Dashboard: React.FC = () => {
         console.log('💬 Dashboard 收到聊天响应:', response);
         
         try {
-          if (response.conversation_id) {
+          if (response.conversation_id && !conversationId) {
+            console.log('🌟 收到新的会话ID (来自最终响应):', response.conversation_id);
             setConversationId(response.conversation_id);
+            const wsService = getWebSocketService();
+            if (wsService) {
+              console.log('🔄 更新WebSocket服务的会话ID:', response.conversation_id);
+              wsService.setConversationId(response.conversation_id);
+            }
+            // 保存新的会话ID到localStorage
+            ConversationPersistence.saveCurrentConversationId(response.conversation_id);
+            // 触发会话列表刷新
+            setConversationListKey(prev => prev + 1);
           }
           
           if (response.current_agent) {
             console.log('💬 聊天响应中更新当前代理:', response.current_agent);
             setCurrentAgent(response.current_agent);
+          }
+          
+          // 检查是否是错误响应
+          if (response.is_error) {
+            console.error('💬 收到错误响应:', response.error_message);
+            
+            // 创建错误消息并添加到消息列表
+            const errorMessage: Message = {
+              id: `error-${Date.now()}-${Math.random()}`,
+              content: `系统异常: ${response.error_message}`,
+              type: 'ai',
+              agent: response.current_agent || 'System',
+              timestamp: new Date(),
+            };
+            
+            setMessages(prev => [...prev, errorMessage]);
+            
+            // 重置loading状态
+            setIsLoading(false);
+            setStreamingResponse('');
+            return;
           }
           
           if (response.messages && Array.isArray(response.messages)) {
@@ -300,10 +489,39 @@ const Dashboard: React.FC = () => {
   // 其他业务逻辑方法
   const handleSelectConversation = async (selectedConversationId: string) => {
     console.log('🔄 选择会话:', selectedConversationId);
+    
+    const wsService = getWebSocketService();
+
+    // 如果是新会话
+    if (selectedConversationId === 'new') {
+      setConversationId(null);
+      setMessages([]);
+      // 可能还需要重置其他与会话相关的状态
+      setEvents([]);
+      setGuardrails([]);
+      setContext({});
+      setCurrentAgent("");
+      setIsLoading(false);
+      setStreamingResponse('');
+      
+      // 重置WebSocket服务中的会话ID
+      if (wsService) {
+        wsService.setConversationId(null);
+      }
+      
+      // 清除localStorage中的会话ID
+      ConversationPersistence.saveCurrentConversationId(null);
+      
+      return;
+    }
+    
+    // 如果是现有会话
     setConversationId(selectedConversationId);
     
+    // 保存会话ID到localStorage
+    ConversationPersistence.saveCurrentConversationId(selectedConversationId);
+    
     // 获取或创建WebSocket服务
-    const wsService = getWebSocketService();
     if (wsService) {
       // 通过WebSocket发送会话切换消息（不再重新连接）
       if (wsService.status === 'connected') {
@@ -362,7 +580,7 @@ const Dashboard: React.FC = () => {
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
     
-    console.log('📤 发送消息:', content);
+    console.log('📤 发送消息:', content, '当前会话ID:', conversationId);
     setIsLoading(true);
     setStreamingResponse('');
     
@@ -381,6 +599,7 @@ const Dashboard: React.FC = () => {
     const wsService = getWebSocketService();
     if (wsService) {
       try {
+        console.log('🔄 WebSocket服务当前会话ID:', wsService.conversationId);
         wsService.sendChatMessage(content.trim());
       } catch (error) {
         console.error('发送消息失败:', error);
@@ -395,6 +614,8 @@ const Dashboard: React.FC = () => {
   };
 
   const handleLogout = () => {
+    // 清除会话持久化数据
+    ConversationPersistence.clearAll();
     dispatch(logout());
   };
 
@@ -441,10 +662,10 @@ const Dashboard: React.FC = () => {
     <ErrorBoundary>
       <div className="h-screen bg-gray-50 flex flex-col">
         {/* 顶部导航栏 */}
-        <header className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
+        <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-200/30 px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-semibold text-gray-900">
+              <h1 className="text-xl font-semibold text-gray-800">
                 AI 个人助手
               </h1>
               <div className="flex items-center space-x-2">
@@ -466,6 +687,13 @@ const Dashboard: React.FC = () => {
                       if (user && token) {
                         const userId = typeof user.user_id === 'string' ? user.user_id : String(user.user_id);
                         const wsService = createWebSocketService(userId, user.username, undefined, token);
+                        
+                        // 如果有当前会话ID，设置到WebSocket服务中
+                        if (conversationId) {
+                          console.log('🔄 重连时设置会话ID到WebSocket服务:', conversationId);
+                          wsService.setConversationId(conversationId);
+                        }
+                        
                         wsService.connect()
                           .then(() => {
                             console.log('✅ 手动重连成功');
@@ -475,7 +703,7 @@ const Dashboard: React.FC = () => {
                           });
                       }
                     }}
-                    className="text-xs text-blue-600 hover:text-blue-700 px-2 py-1 bg-blue-50 rounded border border-blue-200 hover:bg-blue-100"
+                    className="text-xs text-primary hover:text-primary/80 px-2 py-1 bg-primary/10 rounded border border-primary/20 hover:bg-primary/20"
                   >
                     重连
                   </button>
@@ -506,85 +734,107 @@ const Dashboard: React.FC = () => {
 
         {/* 主要内容区域 */}
         <div className="flex-1 flex overflow-hidden">
-          {/* 桌面端布局 */}
-          <div className="hidden md:flex flex-1">
-                                      {/* 左侧面板 - Agent View (40%) */}
-             <div className="w-2/5 bg-white border-r border-gray-200 flex flex-col">
-               <AgentPanel
-                 agents={agents}
-                 currentAgent={currentAgent}
-                 events={events}
-                 guardrails={guardrails}
-                 context={context}
-               />
-             </div>
+          {/* 桌面端布局 - 三栏布局 (3:4:3) */}
+          <div className="hidden md:flex flex-1 gap-4 p-4">
+            {/* 左侧面板 - Agent View (30%) */}
+            <div className="w-[30%] bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-sm flex flex-col">
+              <AgentPanel
+                agents={agents}
+                currentAgent={currentAgent}
+                events={events}
+                guardrails={guardrails}
+                context={context}
+              />
+            </div>
 
-             {/* 右侧聊天区域 - Customer View (60%) */}
-             <div className="w-3/5 flex flex-col">
+            {/* 中间面板 - Person Data (40%) */}
+            <div className="w-2/5 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-sm flex flex-col">
+              <PersonDataPanel userId={parseInt(user?.user_id || "1")} />
+            </div>
+
+                         {/* 右侧聊天区域 - Assistant View (30%) */}
+             <div className="w-[30%] flex flex-col bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-sm">
                <Chat
                  messages={messages}
                  onSendMessage={handleSendMessage}
-                 isLoading={isLoading}
+                 isLoading={isLoading || isRestoringSession}
                  streamingResponse={streamingResponse}
                  wsStatus={wsStatus}
                  conversationId={conversationId}
                  onSelectConversation={handleSelectConversation}
+                 conversationListKey={conversationListKey}
                />
              </div>
           </div>
 
           {/* 移动端布局 */}
           <div className="md:hidden flex-1 flex flex-col">
-            {/* 移动端标签切换 */}
-            <div className="bg-white border-b border-gray-200 px-4 py-2">
-              <div className="flex space-x-1">
+            {/* 移动端内容 - 撑满屏幕，无边框 */}
+            <div className="flex-1 overflow-hidden bg-gray-50">
+              {activeTab === 'agent' && (
+                <AgentPanel
+                  agents={agents}
+                  currentAgent={currentAgent}
+                  events={events}
+                  guardrails={guardrails}
+                  context={context}
+                />
+              )}
+              {activeTab === 'person' && (
+                <PersonDataPanel userId={parseInt(user?.user_id || "1")} />
+              )}
+              {activeTab === 'customer' && (
+                <Chat
+                  messages={messages}
+                  onSendMessage={handleSendMessage}
+                  isLoading={isLoading || isRestoringSession}
+                  streamingResponse={streamingResponse}
+                  wsStatus={wsStatus}
+                  conversationId={conversationId}
+                  onSelectConversation={handleSelectConversation}
+                  conversationListKey={conversationListKey}
+                />
+              )}
+            </div>
+
+            {/* 移动端底部导航栏 - 铺满屏幕 */}
+            <div className="bg-gray-100/90 backdrop-blur-sm border-t border-gray-300/30 px-0 py-2 safe-bottom">
+              <div className="flex">
                 <button
                   onClick={() => setActiveTab('agent')}
-                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                  className={`flex-1 py-3 px-2 text-sm font-medium transition-all duration-200 ${
                     activeTab === 'agent'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200/50'
                   }`}
                 >
-                  <Bot className="w-4 h-4 mx-auto mb-1" />
-                  智能体
+                  <Bot className="w-5 h-5 mx-auto mb-1" />
+                  <span className="block text-xs">智能体</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('person')}
+                  className={`flex-1 py-3 px-2 text-sm font-medium transition-all duration-200 ${
+                    activeTab === 'person'
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200/50'
+                  }`}
+                >
+                  <Database className="w-5 h-5 mx-auto mb-1" />
+                  <span className="block text-xs">个人数据</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('customer')}
-                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                  className={`flex-1 py-3 px-2 text-sm font-medium transition-all duration-200 ${
                     activeTab === 'customer'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200/50'
                   }`}
                 >
-                  <MessageCircle className="w-4 h-4 mx-auto mb-1" />
-                  聊天
+                  <MessageCircle className="w-5 h-5 mx-auto mb-1" />
+                  <span className="block text-xs">聊天</span>
                 </button>
               </div>
             </div>
-
-                         {/* 移动端内容 */}
-             <div className="flex-1 overflow-hidden">
-               {activeTab === 'agent' ? (
-                 <AgentPanel
-                   agents={agents}
-                   currentAgent={currentAgent}
-                   events={events}
-                   guardrails={guardrails}
-                   context={context}
-                 />
-               ) : (
-                 <Chat
-                   messages={messages}
-                   onSendMessage={handleSendMessage}
-                   isLoading={isLoading}
-                   streamingResponse={streamingResponse}
-                   wsStatus={wsStatus}
-                   conversationId={conversationId}
-                   onSelectConversation={handleSelectConversation}
-                 />
-               )}
-             </div>
           </div>
         </div>
 

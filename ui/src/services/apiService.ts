@@ -42,7 +42,7 @@ export function setAuthFailureHandler(handler: () => void) {
 
 // 创建axios实例
 const apiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.DEV ? '' : API_BASE_URL, // 开发环境使用相对路径
+  baseURL: '', // 始终使用相对路径，因为前端现在通过后端服务器提供
   timeout: REQUEST_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
@@ -296,47 +296,77 @@ export const chatAPI = {
 
 // 笔记相关API
 export const noteAPI = {
-  // 获取笔记列表
-  async getNotes(params?: any): Promise<ApiResponse<PaginatedResponse<any>>> {
-    return apiService.get(API_ENDPOINTS.NOTE.LIST, params);
+  // 获取笔记列表 - 修正：后端返回包含data字段的结构
+  async getNotes(userId: string, params?: any): Promise<ApiResponse<{data: any[], total: number, user_id: number}>> {
+    return apiService.get(API_ENDPOINTS.NOTE.LIST(userId), params);
   },
 
   // 创建笔记
-  async createNote(data: any): Promise<ApiResponse<any>> {
-    return apiService.post(API_ENDPOINTS.NOTE.CREATE, data);
+  async createNote(userId: string, data: any): Promise<ApiResponse<any>> {
+    return apiService.post(API_ENDPOINTS.NOTE.CREATE(userId), data);
   },
 
   // 更新笔记
-  async updateNote(noteId: string, data: any): Promise<ApiResponse<any>> {
-    return apiService.put(API_ENDPOINTS.NOTE.UPDATE(noteId), data);
+  async updateNote(userId: string, noteId: string, data: any): Promise<ApiResponse<any>> {
+    return apiService.put(API_ENDPOINTS.NOTE.UPDATE(userId, noteId), data);
   },
 
   // 删除笔记
-  async deleteNote(noteId: string): Promise<ApiResponse<any>> {
-    return apiService.delete(API_ENDPOINTS.NOTE.DELETE(noteId));
+  async deleteNote(userId: string, noteId: string): Promise<ApiResponse<any>> {
+    return apiService.delete(API_ENDPOINTS.NOTE.DELETE(userId, noteId));
+  },
+
+  // 搜索笔记 - 修正：后端返回包含data字段的结构
+  async searchNotes(userId: string, searchData: any): Promise<ApiResponse<{data: any[], total: number, user_id: number}>> {
+    return apiService.post(API_ENDPOINTS.NOTE.SEARCH(userId), searchData);
+  },
+
+  // 获取笔记标签 - 修正：后端返回包含data字段的结构
+  async getTags(userId: string): Promise<ApiResponse<{data: any[], total: number, user_id: number}>> {
+    return apiService.get(API_ENDPOINTS.NOTE.TAGS(userId));
   },
 };
 
 // 待办事项相关API
 export const todoAPI = {
-  // 获取待办事项列表
-  async getTodos(params?: any): Promise<ApiResponse<PaginatedResponse<any>>> {
-    return apiService.get(API_ENDPOINTS.TODO.LIST, params);
+  // 获取待办事项列表 - 修正：后端直接返回Todo数组，不是分页结构
+  async getTodos(userId: string, params?: any): Promise<ApiResponse<any[]>> {
+    return apiService.get(API_ENDPOINTS.TODO.LIST(userId), params);
   },
 
   // 创建待办事项
-  async createTodo(data: any): Promise<ApiResponse<any>> {
-    return apiService.post(API_ENDPOINTS.TODO.CREATE, data);
+  async createTodo(userId: string, data: any): Promise<ApiResponse<any>> {
+    return apiService.post(API_ENDPOINTS.TODO.CREATE(userId), data);
   },
 
   // 更新待办事项
-  async updateTodo(todoId: string, data: any): Promise<ApiResponse<any>> {
-    return apiService.put(API_ENDPOINTS.TODO.UPDATE(todoId), data);
+  async updateTodo(userId: string, todoId: string, data: any): Promise<ApiResponse<any>> {
+    return apiService.put(API_ENDPOINTS.TODO.UPDATE(userId, todoId), data);
   },
 
   // 删除待办事项
-  async deleteTodo(todoId: string): Promise<ApiResponse<any>> {
-    return apiService.delete(API_ENDPOINTS.TODO.DELETE(todoId));
+  async deleteTodo(userId: string, todoId: string): Promise<ApiResponse<any>> {
+    return apiService.delete(API_ENDPOINTS.TODO.DELETE(userId, todoId));
+  },
+
+  // 完成待办事项
+  async completeTodo(userId: string, todoId: string): Promise<ApiResponse<any>> {
+    return apiService.post(API_ENDPOINTS.TODO.COMPLETE(userId, todoId));
+  },
+
+  // 取消完成待办事项
+  async uncompleteTodo(userId: string, todoId: string): Promise<ApiResponse<any>> {
+    return apiService.post(API_ENDPOINTS.TODO.UNCOMPLETE(userId, todoId));
+  },
+
+  // 获取待办事项统计 - 后端返回包含data字段的结构
+  async getStats(userId: string): Promise<ApiResponse<{data: any}>> {
+    return apiService.get(API_ENDPOINTS.TODO.STATS(userId));
+  },
+
+  // 获取关联笔记的待办事项 - 后端返回包含data字段的结构
+  async getTodosByNote(userId: string, noteId: string): Promise<ApiResponse<{data: any[], total: number}>> {
+    return apiService.get(API_ENDPOINTS.TODO.BY_NOTE(userId, noteId));
   },
 };
 

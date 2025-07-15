@@ -14,7 +14,7 @@ sys.path.insert(0, str(backend_dir))
 # Now import project modules
 from agents.model_settings import ModelSettings
 from agents.extensions.models.litellm_model import LitellmModel
-from agents.mcp import MCPServer, MCPServerStreamableHttp
+from agents.mcp import MCPServerStreamableHttp
 from agents.mcp import ToolFilterContext
 from service.models.todo import Todo
 
@@ -29,19 +29,6 @@ from agents import (
     Agent,
     RunContextWrapper,
     set_tracing_disabled,
-    Runner,
-    TResponseInputItem,
-    function_tool,
-    handoff,
-    GuardrailFunctionOutput,
-    input_guardrail,
-    InputGuardrailTripwireTriggered,
-    MessageOutputItem,
-    HandoffOutputItem,
-    ItemHelpers,
-    Handoff,
-    ToolCallItem,
-    ToolCallOutputItem,
 )
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 
@@ -136,9 +123,9 @@ class PersonalAssistantManager:
     def _create_model(self) -> LitellmModel:
         """创建语言模型"""
         return LitellmModel(
-            model="gpt-4o",
-            base_url=os.getenv("CUSTOMIZE_OPENAI_API_BASE_URL"),
-            api_key=os.getenv("CUSTOMIZE_OPENAI_API_KEY"),
+            model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o"),
+            base_url=os.getenv("OPENAI_API_BASE_URL", "https://api.openai.com/v1"),
+            api_key=os.getenv("OPENAI_API_KEY"),
         )
     
     def _create_model_settings(self) -> ModelSettings:
@@ -280,6 +267,13 @@ class PersonalAssistantManager:
                 self.agents['recipe'],
                 self.agents['personal'],
             ]
+        )
+
+        # 会话标题智能体
+        self.agents['conversation_title'] = Agent(
+            name="Conversation Title Agent",
+            model=self.model,
+            instructions="You are a conversation title generator. Based on the user's chat history, summarize what the user wants to do and provide a title within 10 characters. ",
         )
         
         print("✅ 所有智能体创建完成")
@@ -491,6 +485,10 @@ class PersonalAssistantManager:
     def get_personal_agent(self) -> Agent[PersonalAssistantContext]:
         """获取个人助手智能体"""
         return self.get_agent('personal')
+    
+    def get_conversation_title_agent(self) -> Agent[PersonalAssistantContext]:
+        """获取会话标题智能体"""
+        return self.get_agent('conversation_title')
     
     @property
     def is_initialized(self) -> bool:
