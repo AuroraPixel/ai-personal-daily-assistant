@@ -151,6 +151,22 @@ class UserService:
             user for user in all_users 
             if name.lower() in user.name.lower()
         ]
+
+    def search_users_by_username(self, username: str) -> List[User]:
+        """
+        根据姓名搜索用户
+        
+        Args:
+            name: 搜索的姓名
+            
+        Returns:
+            匹配的用户列表
+        """
+        all_users = self.get_all_users()
+        return [
+            user for user in all_users 
+            if username.lower() in user.username.lower()
+        ]
     
     def search_users_by_email(self, email: str) -> List[User]:
         """
