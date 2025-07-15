@@ -513,16 +513,52 @@ async def _handle_stream_event_concurrent(
                 await response_queue.put(response_message)
                 
             elif isinstance(item, HandoffOutputItem):
-                # 处理切换代理项
-                chat_response.current_agent = item.agent.name
+                # 处理切换代理项 - 获取源代理和目标代理
+                source_agent = item.source_agent
+                target_agent = item.target_agent
                 
+                # 更新当前代理为目标代理
+                chat_response.current_agent = target_agent.name
+                
+                # 记录切换事件
                 agent_event = AgentEvent(
                     id=uuid4().hex,
                     type="handoff",
-                    agent=item.agent.name,
-                    content=f"切换到 {item.agent.name}"
+                    agent=source_agent.name,
+                    content=f"{source_agent.name} -> {target_agent.name}",
+                    metadata={"source_agent": source_agent.name, "target_agent": target_agent.name}
                 )
                 chat_response.events.append(agent_event)
+                
+                # 如果有 on_handoff 回调，显示为工具调用
+                from_agent = source_agent
+                to_agent = target_agent
+                
+                # 在源代理上找到匹配目标代理的 Handoff 对象
+                ho = next(
+                    (h for h in getattr(from_agent, "handoffs", [])
+                     if isinstance(h, Handoff) and getattr(h, "agent_name", None) == to_agent.name),
+                    None,
+                )
+                
+                if ho:
+                    fn = ho.on_invoke_handoff
+                    fv = fn.__code__.co_freevars
+                    cl = fn.__closure__ or []
+                    if "on_handoff" in fv:
+                        idx = fv.index("on_handoff")
+                        if idx < len(cl) and cl[idx].cell_contents:
+                            cb = cl[idx].cell_contents
+                            cb_name = getattr(cb, "__name__", repr(cb))
+                            
+                            # 添加 on_handoff 回调作为工具调用事件
+                            callback_event = AgentEvent(
+                                id=uuid4().hex,
+                                type="tool_call",
+                                agent=to_agent.name,
+                                content=cb_name,
+                            )
+                            chat_response.events.append(callback_event)
                 
                 response_message = WebSocketMessage(
                     type=MessageType.AI_RESPONSE,
